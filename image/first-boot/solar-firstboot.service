@@ -1,0 +1,14 @@
+[Unit]
+Description=Apply solar.conf from the boot partition (first boot only)
+# Wait for networking tools and mDNS so the hostname and Wi-Fi changes apply.
+After=NetworkManager.service avahi-daemon.service regenerate_ssh_host_keys.service
+Wants=regenerate_ssh_host_keys.service
+# Skip once the first boot has finished.
+ConditionPathExists=!/var/lib/solar/firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/solar-firstboot
+
+[Install]
+WantedBy=multi-user.target

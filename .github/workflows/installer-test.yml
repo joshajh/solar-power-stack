@@ -1,0 +1,28 @@
+name: installer-test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  debian12:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@v4
+      # QEMU lets the x86 runner run arm64 containers.
+      - uses: docker/setup-qemu-action@v3
+      - name: Run the installer in a fresh Debian 12 container
+        run: |
+          docker run --rm --cap-add NET_ADMIN -e SOLAR_REQUIRE_NET=1 --platform ${{ matrix.platform }} \
+            -v "$PWD:/repo:ro" debian:12 bash /repo/tests/test-installer.sh
+      - name: Run the first-boot script test
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/repo:ro" debian:12 bash /repo/tests/test-firstboot.sh
+      - name: Run the simulated Termux test
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/repo:ro" debian:12 bash /repo/tests/test-termux.sh

@@ -1,0 +1,19 @@
+# solar.conf - settings for your Solar server. Edit this file on the SD card
+# before the first boot. Remove the # at the start of a line to use it.
+# The device applies the file once, at the first boot.
+
+# The name of the device. "solar" gives you http://solar.local
+#hostname=solar
+
+# The name on your starter page.
+#site_name=My Solar Server
+
+# Wi-Fi. Use your own network name, password and two-letter country code.
+#wifi_ssid=
+#wifi_password=
+#wifi_country=GB
+
+# SSH stays off unless you set ssh=true. SSH also needs your public key,
+# on one line, for example: ssh_key=ssh-ed25519 AAAA... you@laptop
+#ssh=false
+#ssh_key=

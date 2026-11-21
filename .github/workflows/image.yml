@@ -1,0 +1,30 @@
+name: image
+
+# Build the Raspberry Pi image on manual dispatch, and for the release workflow.
+# The release workflow calls this one on a tag, so a tag builds only once.
+on:
+  workflow_dispatch:
+  workflow_call:
+
+# Read-only token. The release workflow grants more only where it needs it.
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      # pi-gen's Docker build needs the QEMU program and its binfmt hook on the host.
+      - name: Install QEMU for arm64
+        run: sudo apt-get update && sudo apt-get install -y qemu-user-static binfmt-support
+      - name: Build the image with pi-gen
+        run: image/build.sh "$RUNNER_TEMP/out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solar-image
+          path: |
+            ${{ runner.temp }}/out/*.img.xz
+            ${{ runner.temp }}/out/*.sha256
+          if-no-files-found: error
