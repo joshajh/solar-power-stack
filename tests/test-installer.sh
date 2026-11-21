@@ -40,7 +40,13 @@ curl -fsS localhost | grep -q "my edit" || bad "edit lost"
 ok "second run changes nothing and keeps the edit"
 
 # 4b. Running again never starts a second Caddy.
-[ "$(grep -al '^caddy.run' /proc/[0-9]*/cmdline 2>/dev/null | wc -l)" = 1 ] || bad "more than one Caddy process"
+# Count the "caddy run" processes. Wait a few seconds: under QEMU, a process that exits takes longer to vanish.
+count_caddy() { grep -al '^caddy.run' /proc/[0-9]*/cmdline 2>/dev/null | wc -l; }
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ "$(count_caddy)" = 1 ] && break; sleep 1; done
+if [ "$(count_caddy)" != 1 ]; then
+  for f in $(grep -al 'caddy' /proc/[0-9]*/cmdline 2>/dev/null); do echo "process: $(tr '\0' ' ' < "$f")"; done
+  bad "more than one Caddy process"
+fi
 ok "second run leaves one Caddy process"
 
 # 5. solar.conf sets the site name.
