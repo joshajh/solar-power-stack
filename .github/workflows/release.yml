@@ -5,6 +5,10 @@ on:
   push:
     tags: ['v*']
 
+# Read-only by default. Only the publish job can write.
+permissions:
+  contents: read
+
 jobs:
   # Build the image with the same workflow that you can also run by hand.
   image:

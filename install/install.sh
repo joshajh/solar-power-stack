@@ -16,7 +16,13 @@ CONF_FILE=""
 # The starter site lives next to this script's parent directory.
 # When you pipe the script into bash (curl ... | bash), there is no folder
 # next to it. ensure_repo() then downloads the starter files.
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd || echo /nonexistent)"
+# Never guess the folder when the script arrives on stdin: a planted folder next
+# to the current directory would then run as root.
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || echo /nonexistent)"
+else
+  REPO_DIR=/nonexistent
+fi
 TEMPLATE_DIR="$REPO_DIR/site-template"
 SRC_URL="${SOLAR_SRC_URL:-https://github.com/joshajh/solar-power-stack/archive/refs/heads/main.tar.gz}"
 # Tests point this at a fake os-release file.
@@ -90,6 +96,12 @@ if [ -n "$CONF_FILE" ]; then
     esac
   done < <(grep -v '^[[:space:]]*#' "$CONF_FILE" || true)
 fi
+
+# The folder name goes into the Caddyfile and a boot script. Keep it plain.
+case "$SITE_DIR" in
+  *[\"\\\$\`]*|*$'\n'*) fail "--site-dir may not contain quotes, backslashes, dollar signs, backticks or line breaks." ;;
+  /|"$HOME"|"$HOME"/) fail "--site-dir must be a folder just for your site, not $SITE_DIR itself." ;;
+esac
 
 case "$PORT" in ''|*[!0-9]*) fail "The port must be a number, not '$PORT'." ;; esac
 
@@ -337,6 +349,7 @@ install_status() {
   # Termux has no /usr/bin/env, so point the script at Termux's own bash.
   if [ "$OS" = termux ]; then sed -i "1s|.*|#!$PREFIX/bin/bash|" "$BIN_DIR/solar-status"; fi
   mkdir -p "$CONF_DIR"
+  chmod 700 "$CONF_DIR"   # solar.conf may hold secrets
   # Keep a copy of solar.conf where the status script looks for it.
   if [ -n "$CONF_FILE" ]; then
     cmp -s "$CONF_FILE" "$CONF_DIR/solar.conf" 2>/dev/null || cp "$CONF_FILE" "$CONF_DIR/solar.conf"

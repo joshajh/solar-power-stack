@@ -88,7 +88,9 @@ One Sonnet reviewer per PR (none for #11 and #13, which hold only stubs and a sk
 
 Bugs I found myself while testing: the no-systemd path of #2 started a second Caddy on every run (fixed in #15 and covered by a test), and the Caddy process-count test failed under QEMU (fixed on #15, #16, #17, #18 as follow-up commits).
 
-Final epic review: two Sonnet reviewers (correctness and integration; security). Results are in the epic PR comment.
+Final epic review: two Sonnet reviewers.
+- Correctness and integration (all four test suites passed for them): 5 findings. Fixed: docs said the image workflow triggers on tags (it is the release workflow), status keys are not read from the boot-partition `solar.conf` (documented), a passive log line. Rejected: CR stripping in the installer's conf reader (the image never uses it; the failure is safe).
+- Security: 10 findings. Fixed (CONFIRMED): `curl | bash` trusted a planted folder next to the current directory and ran it as root (now always downloads when piped; tested), `--site-dir` could inject Caddyfile directives or shell text (now refused; tested; `/` and `$HOME` refused), Wi-Fi keyfile was briefly world-readable (umask 077), `/etc/solar` is now mode 700, workflows now default to a read-only token. Not fixed, documented: the unpinned `main` download (recommend a tag and checksum at release; Needs Josh), tag-push and B2 key scope (use tag protection and a bucket-scoped key), tunnel makes `/status` public (documented), temp-file window in `status.sh`, pi-gen and actions pinned by tag not SHA. The `status_public` rule held against every bypass tried (case, `//`, `..`, `%73`, query, spoofed headers).
 
 ## Tests and checks run this session
 
@@ -121,4 +123,5 @@ The image build, every Pi test, every phone test, the release run, Imager, B2, m
 | Make the repository public | Do it before the first full tag, because the one-liner and the Imager URL need it. |
 | Decide on `ssh=true` needing `ssh_key` (#8) | Keep it. A default password on an internet-facing SSH is worse. |
 | Short install address for Termux (`curl ...install.sh \| bash` is long to read aloud) | Add a redirect such as `solarpower.possibleworlds.space/install` and pin the version to a tag. |
+| Protect `v*` tags and scope the B2 key to one bucket (write-only) | Do both before the first release. |
 | Pi Zero 2 W in the Imager device list | Remove the claim from `docs/flashing.md` if you do not test it. |

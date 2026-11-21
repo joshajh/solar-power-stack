@@ -73,6 +73,8 @@ if [ -n "$ssid" ]; then
   password=$(get wifi_password)
   conn="$NM_DIR/solar-wifi.nmconnection"
   mkdir -p "$NM_DIR"
+  # Create the keyfile private from the start: it holds the Wi-Fi password.
+  umask 077
   {
     echo "[connection]"
     echo "id=solar-wifi"

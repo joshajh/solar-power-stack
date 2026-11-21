@@ -6,6 +6,10 @@ on:
   workflow_dispatch:
   workflow_call:
 
+# Read-only token. The release workflow grants more only where it needs it.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

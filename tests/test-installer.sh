@@ -160,3 +160,13 @@ grep -q 'start\|restart' /tmp/systemctl.log && bad "image build started a servic
 [ -f /etc/systemd/system/caddy.service.d/solar.conf ] || bad "restart drop-in missing"
 curl -fsS localhost >/dev/null 2>&1 && bad "caddy runs during image build"
 ok "--image-build enables services and starts none"
+
+# 12. Hostile input: a bad --site-dir is refused, and a piped install ignores planted folders.
+if out=$(bash install/install.sh --site-dir $'/srv/x"\n\trespond /pwn "x' 2>&1); then bad "bad --site-dir accepted"; fi
+echo "$out" | grep -q "may not contain" || bad "site-dir message"
+ok "--site-dir with quotes and line breaks is refused"
+mkdir -p /tmp/plant/status /tmp/plant/site-template /tmp/plant/sub
+echo 'touch /tmp/PWNED' > /tmp/plant/status/status.sh; echo x > /tmp/plant/site-template/index.html
+(cd /tmp/plant/sub && SOLAR_SRC_URL=file:///nonexistent bash < /work/install/install.sh >/dev/null 2>&1) && bad "piped install trusted a planted folder"
+[ ! -e /tmp/PWNED ] || bad "planted script ran"
+ok "piped install does not use planted folders"
