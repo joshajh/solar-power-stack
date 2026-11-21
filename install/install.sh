@@ -298,10 +298,13 @@ start_debian() {
     systemctl enable caddy >/dev/null 2>&1
     if [ "$changed" = yes ]; then systemctl restart caddy; else systemctl start caddy; fi
   else
-    # No systemd (a container, for example): start Caddy in the background.
-    if [ "$changed" = yes ]; then caddy stop >/dev/null 2>&1 || true; fi
-    # "caddy start" fails harmlessly when Caddy already runs.
-    caddy start --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
+    # No systemd (a container, for example). Caddy's admin address answers
+    # when Caddy already runs. Then reload the config. Otherwise start Caddy.
+    if curl -fsS http://127.0.0.1:2019/config/ >/dev/null 2>&1; then
+      if [ "$changed" = yes ]; then caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true; fi
+    else
+      caddy start --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
+    fi
   fi
   # Check that the server answers before you tell the user it runs.
   local _

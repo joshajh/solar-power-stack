@@ -39,6 +39,10 @@ after=$(snapshot)
 curl -fsS localhost | grep -q "my edit" || bad "edit lost"
 ok "second run changes nothing and keeps the edit"
 
+# 4b. Running again never starts a second Caddy.
+[ "$(grep -al '^caddy.run' /proc/[0-9]*/cmdline 2>/dev/null | wc -l)" = 1 ] || bad "more than one Caddy process"
+ok "second run leaves one Caddy process"
+
 # 5. solar.conf sets the site name.
 rm -rf /srv/site
 printf '# comment\nsite_name=From Conf\n' > /tmp/solar.conf
