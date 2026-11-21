@@ -11,9 +11,11 @@ PORT=80
 SITE_DIR=/srv/site
 SITE_NAME="My Solar Server"
 HOSTNAME_WANTED=""
+STATUS_PUBLIC=false
 CONF_FILE=""
 # The starter site lives next to this script's parent directory.
-TEMPLATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/site-template"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEMPLATE_DIR="$REPO_DIR/site-template"
 # Tests point this at a fake os-release file.
 OS_RELEASE="${SOLAR_OS_RELEASE:-/etc/os-release}"
 
@@ -33,6 +35,10 @@ Options:
 solar.conf keys (one key=value per line, lines starting with # are comments):
   hostname        Name of this device, for example "solar" for solar.local.
   site_name       Same as --name.
+  status_public   true or false (default false). false limits /status and
+                  /status.json to private addresses (home network).
+  victron         true or false (default false). Read a Victron solar charger.
+  victron_device  Serial port of the VE.Direct cable. Default: /dev/ttyUSB0.
 
 Command-line flags override solar.conf.
 USAGE
@@ -62,6 +68,7 @@ if [ -n "$CONF_FILE" ]; then
     case "$key" in
       hostname)  HOSTNAME_WANTED="$value" ;;
       site_name) [ -n "${FLAG_NAME:-}" ] || SITE_NAME="$value" ;;
+      status_public) STATUS_PUBLIC="$value" ;;
     esac
   done < <(grep -v '^[[:space:]]*#' "$CONF_FILE" || true)
 fi
@@ -144,13 +151,23 @@ install_site() {
 
 # Write the Caddyfile. Return 0 when the file changed, 1 when it stayed the same.
 write_caddyfile() {
-  local target=$1 tmp
+  local target=$1 tmp status_rule=""
   tmp=$(mktemp)
+  # Unless status_public=true, answer 403 to status requests that come from
+  # outside the private address ranges (home network and this device).
+  if [ "$STATUS_PUBLIC" != true ]; then
+    status_rule='	@status_outside {
+		path /status /status/* /status.json
+		not remote_ip private_ranges
+	}
+	respond @status_outside "Forbidden" 403'
+  fi
   cat >"$tmp" <<CADDY
 # Written by solar-power-stack install.sh. Edit with care: the installer
 # replaces this file when you run it again with different options.
 :$PORT {
 	root * "$SITE_DIR"
+$status_rule
 	file_server
 }
 CADDY
@@ -161,6 +178,24 @@ CADDY
   mv "$tmp" "$target"
   chmod a+r "$target"
   return 0
+}
+
+# Install the status script, save the settings it reads and write the first page.
+install_status() {
+  install -m 755 "$REPO_DIR/status/status.sh" /usr/local/bin/solar-status
+  mkdir -p /etc/solar
+  # Keep a copy of solar.conf where the status script looks for it.
+  if [ -n "$CONF_FILE" ]; then
+    cmp -s "$CONF_FILE" /etc/solar/solar.conf 2>/dev/null || cp "$CONF_FILE" /etc/solar/solar.conf
+  fi
+  if have_systemd; then
+    # A timer runs the script every minute.
+    printf '[Service]\nType=oneshot\nExecStart=/usr/local/bin/solar-status %s\n' "$SITE_DIR" > /etc/systemd/system/solar-status.service
+    printf '[Timer]\nOnBootSec=10\nOnUnitActiveSec=60\n[Install]\nWantedBy=timers.target\n' > /etc/systemd/system/solar-status.timer
+    systemctl daemon-reload
+    systemctl enable --now solar-status.timer >/dev/null 2>&1
+  fi
+  /usr/local/bin/solar-status "$SITE_DIR"
 }
 
 have_systemd() { [ -d /run/systemd/system ]; }
@@ -224,6 +259,7 @@ if [ "$OS" = termux ]; then
 else
   install_caddy_debian
   install_site
+  install_status
   changed=no
   if write_caddyfile /etc/caddy/Caddyfile; then changed=yes; fi
   set_hostname
