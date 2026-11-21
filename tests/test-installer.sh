@@ -41,7 +41,15 @@ ok "second run changes nothing and keeps the edit"
 
 # 4b. Running again never starts a second Caddy.
 # Count the "caddy run" processes. Wait a few seconds: under QEMU, a process that exits takes longer to vanish.
-count_caddy() { grep -al '^caddy.run' /proc/[0-9]*/cmdline 2>/dev/null | wc -l; }
+# Under QEMU the command line starts with the emulator: allow that prefix.
+count_caddy() {
+  local f n=0 c
+  for f in /proc/[0-9]*/cmdline; do
+    c=$(tr '\0' ' ' < "$f" 2>/dev/null || true)
+    [[ $c =~ ^(/usr/bin/qemu-[^\ ]+\ /usr/bin/caddy\ )?caddy\ run\  ]] && n=$((n + 1))
+  done
+  echo "$n"
+}
 for _ in 1 2 3 4 5 6 7 8 9 10; do [ "$(count_caddy)" = 1 ] && break; sleep 1; done
 if [ "$(count_caddy)" != 1 ]; then
   for f in $(grep -al 'caddy' /proc/[0-9]*/cmdline 2>/dev/null); do echo "process: $(tr '\0' ' ' < "$f")"; done
