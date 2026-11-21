@@ -1,10 +1,10 @@
 name: image
 
-# Build the Raspberry Pi image on every version tag and on manual dispatch.
+# Build the Raspberry Pi image on manual dispatch, and for the release workflow.
+# The release workflow calls this one on a tag, so a tag builds only once.
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:

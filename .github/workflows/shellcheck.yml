@@ -17,3 +17,10 @@ jobs:
           if [ -z "$files" ]; then echo "No shell scripts yet."; exit 0; fi
           # shellcheck disable=SC2086
           shellcheck $files
+
+  oslist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test the Imager repository file generator
+        run: tests/test-oslist.sh

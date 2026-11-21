@@ -26,6 +26,16 @@ The goal: you run your own web server on a device you already have, then you add
 | `image/` | The Raspberry Pi OS image build. |
 | `docs/` | Design notes and spike reports. |
 
+## Flash the image
+
+Open Raspberry Pi Imager, set a custom repository and paste this address:
+
+```
+https://github.com/joshajh/solar-power-stack/releases/latest/download/os-list.json
+```
+
+The full steps are in [docs/flashing.md](docs/flashing.md). The address starts to work after the first release exists and the repository is public.
+
 ## Licence
 
 The code in this repository uses the MIT licence. See `LICENSE`.
