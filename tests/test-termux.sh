@@ -15,6 +15,15 @@ mkdir -p "$PREFIX/bin" "$PREFIX/etc" "$PREFIX/tmp" "$HOME"
 ln -s /bin/sh "$PREFIX/bin/sh"; ln -s /bin/bash "$PREFIX/bin/bash"
 rm -f /usr/bin/env.bak # Termux has no /usr/bin/env; the test checks the installed script does not need it
 mv /usr/bin/env /usr/bin/env.bak
+# Count processes by command line. Under QEMU the line starts with the emulator and the program path.
+count_procs() {
+  local f n=0 c
+  for f in /proc/[0-9]*/cmdline; do
+    c=$(tr '\0' ' ' < "$f" 2>/dev/null || true)
+    [[ $c =~ ^(/usr/bin/qemu-[^\ ]+\ [^\ ]+\ )?$1 ]] && n=$((n + 1))
+  done
+  echo "$n"
+}
 # Stubs: pkg does nothing (Caddy is already installed), the rest log their calls.
 for c in pkg termux-wake-lock am; do
   printf '#!/bin/sh\necho "%s $*" >> /tmp/calls\n' "$c" > "$PREFIX/bin/$c"; chmod +x "$PREFIX/bin/$c"
@@ -48,8 +57,8 @@ bash install/install.sh >/dev/null 2>&1
 after=$(find "$HOME/site" "$PREFIX/etc/caddy" "$HOME/.termux" -type f ! -name 'status.json' ! -path '*/status/*' ! -name '.status.*' -exec sha256sum {} + | sort)
 [ "$before" = "$after" ] || bad "second run changed files"
 curl -fsS localhost:8080 | grep -q edit || bad "edit lost"
-[ "$(grep -al '^caddy.run' /proc/[0-9]*/cmdline 2>/dev/null | wc -l)" = 1 ] || bad "more than one Caddy"
-[ "$(for p in /proc/[0-9]*; do tr "\0" " " < "$p/cmdline"; echo; done | grep -ac "^/.*/sh .*solar-serve")" = 1 ] || bad "not exactly one solar-serve"
+[ "$(count_procs "caddy run ")" = 1 ] || bad "more than one Caddy"
+[ "$(count_procs "/.*/sh .*solar-serve")" = 1 ] || bad "not exactly one solar-serve"
 ok "second run changes nothing and starts nothing twice"
 
 # Battery fields appear once Termux:API answers.
