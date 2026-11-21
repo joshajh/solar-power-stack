@@ -74,6 +74,7 @@ if ip addr add 203.0.113.9/32 dev lo 2>/dev/null; then
   [ "$code" = 200 ] || bad "remote request for the site returned $code"
   ok "non-private address gets 403 on /status.json, 200 on the site"
 else
+  [ "${SOLAR_REQUIRE_NET:-}" != 1 ] || bad "cannot add an address; CI must run with --cap-add NET_ADMIN"
   echo "SKIP: cannot add an address (run with --cap-add NET_ADMIN)"
 fi
 # status_public=true lets everyone in.
@@ -90,7 +91,7 @@ printf '{\n  "health": "GOOD",\n  "percentage": 87,\n  "plugged": "PLUGGED_AC",\
 FAKE
 chmod +x /tmp/fakebin/termux-battery-status
 PATH=/tmp/fakebin:$PATH /usr/local/bin/solar-status /srv/site
-grep -q '"percentage": 87, "state": "CHARGING", "temperature_c": 31.5' /srv/site/status.json || bad "battery JSON"
+grep -q '"percentage": 87, "state": "charging", "temperature_c": 31.5' /srv/site/status.json || bad "battery JSON"
 grep -q '87%' /srv/site/status/index.html || bad "battery HTML"
 ok "battery fields appear with Termux:API"
 # 9. Victron stays off by default: no victron block.

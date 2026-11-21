@@ -194,6 +194,8 @@ install_status() {
     printf '[Timer]\nOnBootSec=10\nOnUnitActiveSec=60\n[Install]\nWantedBy=timers.target\n' > /etc/systemd/system/solar-status.timer
     systemctl daemon-reload
     systemctl enable --now solar-status.timer >/dev/null 2>&1
+  else
+    say "This device has no systemd, so the status page updates only when you run: solar-status $SITE_DIR"
   fi
   /usr/local/bin/solar-status "$SITE_DIR"
 }

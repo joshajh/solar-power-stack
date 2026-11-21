@@ -27,7 +27,8 @@ uptime_s=$(cut -d. -f1 /proc/uptime 2>/dev/null || echo 0)
 load1=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null || echo 0)
 # Free space on the disk that holds the site, in megabytes.
 disk_free_mb=$(df -Pm "$SITE_DIR" 2>/dev/null | awk 'NR==2 {print $4}')
-disk_free_mb=${disk_free_mb:-0}
+# Use null, not 0, when df fails, so a failed reading never looks like a full disk.
+case "$disk_free_mb" in ''|*[!0-9]*) disk_free_mb=null ;; esac
 
 # The Pi reports its model here. Other devices report nothing, so fall back.
 [ -r /sys/firmware/devicetree/base/model ] && model=$(tr -d "\000" < /sys/firmware/devicetree/base/model) || model=""
@@ -58,8 +59,10 @@ if command -v termux-battery-status >/dev/null 2>&1; then
     state=$(printf '%s' "$out" | grep -o '"status": *"[A-Z_]*"' | grep -o '"[A-Z_]*"$' | tr -d '"')
     btemp=$(printf '%s' "$out" | grep -o '"temperature": *[0-9.-]*' | grep -o '[-0-9.]*$' || true)
     [ -n "$btemp" ] || btemp=null
+    btemp_html="$btemp &deg;C"; [ "$btemp" != null ] || btemp_html="not available"
+    state=$(printf '%s' "$state" | tr 'A-Z_' 'a-z ')
     battery_json=$(printf ',\n  "battery": {"percentage": %s, "state": "%s", "temperature_c": %s}' "$pct" "$(clean "$state")" "$btemp")
-    battery_html=$(printf '<tr><th>Battery</th><td>%s%%, %s</td></tr>\n<tr><th>Battery temperature</th><td>%s &deg;C</td></tr>' "$pct" "$(clean "$state")" "$btemp")
+    battery_html=$(printf '<tr><th>Battery</th><td>%s%%, %s</td></tr>\n<tr><th>Battery temperature</th><td>%s</td></tr>' "$pct" "$(clean "$state")" "$btemp_html")
   fi
 fi
 
@@ -72,13 +75,20 @@ if [ "$(conf_get victron)" = true ]; then
   dev=$(conf_get victron_device); dev=${dev:-/dev/ttyUSB0}
   if [ -c "$dev" ]; then
     # Set the line speed (this changes the port setting, not the device),
-    # then read for 3 seconds. Redirecting from the device opens it read only.
+    # then read for 3 seconds. cat opens the device read only.
     stty -F "$dev" 19200 raw -echo 2>/dev/null || true
-    block=$(timeout 3 cat <"$dev" 2>/dev/null || true)
+    # timeout wraps cat, so a port that never opens cannot hang the script.
+    # Drop the first and last line: the 3-second cut can split them.
+    block=$(timeout 3 cat "$dev" 2>/dev/null | sed '1d;$d' || true)
     field() { printf '%s\n' "$block" | tr -d '\r' | awk -F'\t' -v k="$1" '$1==k {v=$2} END {print v}'; }
     v=$(field V); i=$(field I); ppv=$(field PPV)
-    case "$v$i$ppv" in
-      *[!0-9-]*|'') ;;
+    # Accept the reading only when all three fields are whole numbers.
+    ok=yes
+    for n in "$v" "$i" "$ppv"; do
+      case "$n" in ''|-|*[!0-9-]*) ok=no ;; esac
+    done
+    case $ok in
+      no) ;;
       *)
         victron_json=$(printf ',\n  "victron": {"battery_volts": %s, "battery_amps": %s, "solar_watts": %s}' \
           "$(awk -v x="$v" 'BEGIN{printf "%.2f", x/1000}')" "$(awk -v x="$i" 'BEGIN{printf "%.2f", x/1000}')" "$ppv")
