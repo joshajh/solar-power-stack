@@ -16,16 +16,16 @@ Open Termux and paste:
 pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/joshajh/solar-power-stack/main/install/install.sh | bash
 ```
 
-The command works after the repository becomes public. Until then, clone the repository with a token and run `bash install/install.sh`.
+The command downloads the newest installer from the `main` branch without a checksum or a pinned version, and it works only after the repository is public. To pin a version, set `SOLAR_SRC_URL` to the tarball of a release tag. This command has not run on a phone.
 
 The script does this:
 
-1. Installs Caddy and the Termux:API command-line tools with `pkg`.
+1. Updates the package list and installs Caddy and the Termux:API command-line tools with `pkg` (log: `~/solar-pkg.log`).
 2. Copies the starter site to `~/site` and never overwrites a page you edited.
 3. Writes the Caddyfile (`$PREFIX/etc/caddy/Caddyfile`) for port 8080.
 4. Writes `solar-serve` (`$PREFIX/bin/solar-serve`). It keeps the phone awake with `termux-wake-lock`, starts Caddy, restarts Caddy when it stops, and refreshes the status page every minute.
 5. Writes `~/.termux/boot/solar-start.sh`, which starts `solar-serve` when the phone starts (Termux:Boot).
-6. Reports which add-on apps are missing and opens Android's battery-optimisation settings.
+6. Reports which add-on apps it does not detect (Android 11 and newer can hide installed apps from Termux, so the report can be wrong) and opens Android's battery-optimisation settings.
 7. Prints the address, for example `http://192.168.1.50:8080`. Open it from another device on the same Wi-Fi.
 
 You can run the script again. It changes only what differs.
@@ -36,7 +36,8 @@ Do these once. Android otherwise stops Termux in the background.
 
 1. Open Settings, Apps, Termux, Battery and choose Unrestricted. The name differs between phones.
 2. Do the same for Termux:Boot and Termux:API.
-3. Leave the phone on its charger, with Wi-Fi on. Set "Keep Wi-Fi on during sleep" to Always if your phone has that option.
+3. On Android 12 or newer, open Settings, Developer options and switch on **Disable child process restrictions** (the name differs between phones). Without it, Android can kill Caddy even with the wake lock and an unrestricted battery setting.
+4. Leave the phone on its charger, with Wi-Fi on. Set "Keep Wi-Fi on during sleep" to Always if your phone has that option.
 
 The spike report (`docs/spike-termux.md`, from the 72-hour test) lists the settings that the test found necessary. Apply any that this list misses.
 
@@ -56,7 +57,9 @@ None of this has run on a phone yet. The installer logic runs in CI against a si
 | Server survives 24 hours with the screen off | Not run |
 | `am start -a android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS` opens the settings list | Not run |
 | `pm list packages` reports Termux:Boot (else the script prints a reminder) | Not run |
-| Termux:Boot starts `solar-serve` with `PATH` set (the script uses absolute paths) | Not run |
+| Termux:Boot starts `solar-serve` (the script sets `PATH` itself and uses Termux's bash for the status script) | Not run |
+| Android 12 or newer kills Caddy without "Disable child process restrictions", and keeps it with the option on | Not run |
+| The printed Wi-Fi address is right (`ip` or `ifconfig` on `wlan0`) | Not run |
 
 ## Behaviour that the script assumes from the Termux documentation
 

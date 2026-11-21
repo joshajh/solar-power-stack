@@ -113,6 +113,8 @@ OS=$(detect_os)
 
 case "$(uname -m)" in
   aarch64|arm64|x86_64|amd64) ;;
+  # Old phones often report a 32-bit ARM or x86 processor. Termux supports them.
+  arm*|i686) [ "$OS" = termux ] || fail "This installer supports arm64 and x86_64 processors. This device reports $(uname -m)." ;;
   *) fail "This installer supports arm64 and x86 processors. This device reports $(uname -m)." ;;
 esac
 
@@ -129,15 +131,18 @@ fi
 
 # Download the starter files when the script runs without its folder.
 ensure_repo() {
+  local dir
   if [ -d "$TEMPLATE_DIR" ] && [ -f "$REPO_DIR/status/status.sh" ]; then return 0; fi
   command -v curl >/dev/null 2>&1 || fail "curl is missing. Install it, then run this script again."
   say "Downloading the starter files..."
-  local dir
   dir=$(mktemp -d)
   curl -fsSL "$SRC_URL" | tar -xz -C "$dir" --strip-components=1 \
     || fail "Could not download the starter files from $SRC_URL."
   REPO_DIR=$dir
   TEMPLATE_DIR="$dir/site-template"
+  # Delete the downloaded files when the script ends.
+  FETCHED_DIR=$dir
+  trap 'rm -rf "$FETCHED_DIR"' EXIT
 }
 
 # TERMUX HOOK: everything that only a phone needs.
@@ -146,8 +151,9 @@ termux_setup() {
 
   say "Installing Caddy..."
   # termux-api is the command-line half of Termux:API. The Android app is a separate install.
-  pkg install -y caddy curl termux-api >/dev/null 2>&1 \
-    || fail "pkg could not install Caddy. Run: pkg update, then run this script again."
+  # A fresh Termux often has an old package list, so update it first.
+  { pkg update -y && pkg install -y caddy curl termux-api; } >"$HOME/solar-pkg.log" 2>&1 \
+    || fail "pkg could not install Caddy. The log is in $HOME/solar-pkg.log. Run: pkg upgrade, then run this script again."
 
   ensure_repo
   install_site
@@ -160,10 +166,14 @@ termux_setup() {
 #!$PREFIX/bin/sh
 # Keep the phone awake, start Caddy and refresh the status page every minute.
 export SOLAR_CONF="$CONF_DIR/solar.conf"
+# Termux:Boot may start this script with a short PATH.
+export PATH="$PREFIX/bin:\$PATH"
 pidfile="$PREFIX/tmp/solar-serve.pid"
-# Stop if another copy runs already.
-if [ -f "\$pidfile" ] && kill -0 "\$(cat "\$pidfile")" 2>/dev/null; then exit 0; fi
+# Stop if another copy runs already. Android reuses process numbers, so check
+# that the number in the file belongs to solar-serve.
+if [ -f "\$pidfile" ] && grep -q solar-serve "/proc/\$(cat "\$pidfile")/cmdline" 2>/dev/null; then exit 0; fi
 echo \$\$ >"\$pidfile"
+trap 'rm -f "\$pidfile"' EXIT
 termux-wake-lock
 while true; do
   # Every minute: start Caddy if it stopped, then refresh the status page.
@@ -187,7 +197,8 @@ SERVE
   fi
   # Stop an older solar-serve first, so exactly one copy runs. It starts Caddy when needed.
   if [ -f "$PREFIX/tmp/solar-serve.pid" ]; then
-    kill "$(cat "$PREFIX/tmp/solar-serve.pid")" 2>/dev/null || true
+    old=$(cat "$PREFIX/tmp/solar-serve.pid")
+    if grep -q solar-serve "/proc/$old/cmdline" 2>/dev/null; then kill "$old" 2>/dev/null || true; fi
     rm -f "$PREFIX/tmp/solar-serve.pid"
   fi
   nohup "$PREFIX/bin/solar-serve" >/dev/null 2>&1 &
@@ -210,12 +221,12 @@ termux_check_addons() {
   # pm lists the installed apps. It may refuse to run on some phones.
   if packages=$(pm list packages 2>/dev/null) && [ -n "$packages" ]; then
     echo "$packages" | grep -q 'com.termux.boot' \
-      || say "MISSING: Termux:Boot. Install it from F-Droid and open it once. Without it, the server does not start after a reboot."
+      || say "NOT DETECTED: Termux:Boot. If it is not installed, install it from F-Droid and open it once. Without it, the server does not start after a reboot."
   else
     say "Check that Termux:Boot is installed (F-Droid) and that you opened it once. Without it, the server does not start after a reboot."
   fi
   if ! timeout 10 termux-battery-status 2>/dev/null | grep -q percentage; then
-    say "MISSING: Termux:API. Install it from F-Droid and open it once. The status page then shows the battery."
+    say "NOT DETECTED: Termux:API. If it is not installed, install it from F-Droid and open it once. The status page then shows the battery."
   fi
 }
 
@@ -228,7 +239,9 @@ termux_battery_help() {
   say "  1. Open Settings, Apps, Termux, Battery."
   say "  2. Choose Unrestricted (the name differs between phones)."
   say "  3. Repeat for Termux:Boot and Termux:API."
-  say "  4. Leave the phone on its charger with Wi-Fi on."
+  say "  4. On Android 12 or newer, open Settings, Developer options and switch on"
+  say "     Disable child process restrictions (the name differs between phones)."
+  say "  5. Leave the phone on its charger with Wi-Fi on."
 }
 
 # Stop early if the options cannot work on this device.
@@ -321,6 +334,8 @@ CADDY
 # Install the status script, save the settings it reads and write the first page.
 install_status() {
   install -m 755 "$REPO_DIR/status/status.sh" "$BIN_DIR/solar-status"
+  # Termux has no /usr/bin/env, so point the script at Termux's own bash.
+  if [ "$OS" = termux ]; then sed -i "1s|.*|#!$PREFIX/bin/bash|" "$BIN_DIR/solar-status"; fi
   mkdir -p "$CONF_DIR"
   # Keep a copy of solar.conf where the status script looks for it.
   if [ -n "$CONF_FILE" ]; then
@@ -452,11 +467,18 @@ set_hostname() {
 
 print_address() {
   local ip name suffix=""
-  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-  name=$(hostname)
   [ "$PORT" = 80 ] || suffix=":$PORT"
   say ""
   say "Your server is running. Open one of these addresses in a browser:"
+  if [ "$OS" = termux ]; then
+    # Termux's hostname command has no -I. Ask the Wi-Fi interface instead.
+    ip=$( { ip -4 addr show wlan0 2>/dev/null || ifconfig wlan0 2>/dev/null; } | grep -oE 'inet [0-9.]+' | head -n 1 | cut -d' ' -f2) || true
+    if [ -n "$ip" ]; then say "  http://$ip$suffix"
+    else say "  http://<phone address>$suffix  (find the address in Settings, About phone, Status, IP address)"; fi
+    return 0
+  fi
+  ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  name=$(hostname)
   [ -n "$ip" ] && say "  http://$ip$suffix"
   say "  http://$name.local$suffix"
 }

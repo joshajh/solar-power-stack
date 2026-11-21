@@ -12,7 +12,9 @@ cp -r /repo /work
 
 export PREFIX=/tmp/data/data/com.termux/files/usr HOME=/tmp/home
 mkdir -p "$PREFIX/bin" "$PREFIX/etc" "$PREFIX/tmp" "$HOME"
-ln -s /bin/sh "$PREFIX/bin/sh"
+ln -s /bin/sh "$PREFIX/bin/sh"; ln -s /bin/bash "$PREFIX/bin/bash"
+rm -f /usr/bin/env.bak # Termux has no /usr/bin/env; the test checks the installed script does not need it
+mv /usr/bin/env /usr/bin/env.bak
 # Stubs: pkg does nothing (Caddy is already installed), the rest log their calls.
 for c in pkg termux-wake-lock am; do
   printf '#!/bin/sh\necho "%s $*" >> /tmp/calls\n' "$c" > "$PREFIX/bin/$c"; chmod +x "$PREFIX/bin/$c"
@@ -36,7 +38,7 @@ grep -q '^termux-wake-lock' /tmp/calls || bad "wake lock"
 grep -q 'IGNORE_BATTERY_OPTIMIZATION_SETTINGS' /tmp/calls || bad "battery intent"
 ok "boot script written, wake lock and battery settings intent called"
 echo "$out" | grep -q "Termux:Boot" || bad "no Termux:Boot hint"
-echo "$out" | grep -q "MISSING: Termux:API" || bad "no Termux:API hint"
+echo "$out" | grep -q "NOT DETECTED: Termux:API" || bad "no Termux:API hint"
 ok "missing add-ons reported"
 
 # Second run: nothing changes, one Caddy.
