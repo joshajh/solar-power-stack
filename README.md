@@ -34,7 +34,7 @@ Open Raspberry Pi Imager, set a custom repository and paste this address:
 https://github.com/joshajh/solar-power-stack/releases/latest/download/os-list.json
 ```
 
-The full steps are in [docs/flashing.md](docs/flashing.md). The address starts to work after the first release exists and the repository is public.
+The full steps are in [docs/flashing.md](docs/flashing.md). The address starts to work after the first full release (not a pre-release) exists and the repository is public.
 
 ## Licence
 

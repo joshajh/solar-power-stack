@@ -16,34 +16,38 @@ jobs:
     permissions:
       contents: write   # lets the job create the GitHub Release
     env:
-      # Josh adds these as repository secrets. The B2 step skips when they are missing.
-      B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
-      B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
-      B2_BUCKET: ${{ secrets.B2_BUCKET }}
-      B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
       GH_TOKEN: ${{ github.token }}
+      TAG: ${{ github.ref_name }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: solar-image
           path: out
+      - name: Check the tag name
+        run: |
+          # Accept v1.2.3 and v1.2.3-suffix only.
+          [[ $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]] || { echo "Bad tag name: $TAG"; exit 1; }
       - name: Write os-list.json
         run: |
           img=$(ls out/*.img.xz)
-          base="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}"
+          base="https://github.com/${{ github.repository }}/releases/download/$TAG"
           cp image/icon.png out/icon.png
-          image/make-os-list.sh "$img" "${{ github.ref_name }}" "$base" "$base/icon.png" > out/os-list.json
+          image/make-os-list.sh "$img" "$TAG" "$base" "$base/icon.png" > out/os-list.json
       - name: Create the GitHub Release
         run: |
           # A tag with a dash (v0.1.0-test, v0.2.0-rc1) is a pre-release.
           flag=""
-          case "${{ github.ref_name }}" in *-*) flag="--prerelease" ;; esac
-          gh release create "${{ github.ref_name }}" $flag --generate-notes \
-            --title "${{ github.ref_name }}" \
-            --notes "Flash this image with Raspberry Pi Imager. See docs/flashing.md." \
+          case "$TAG" in *-*) flag="--prerelease" ;; esac
+          gh release create "$TAG" $flag --generate-notes --title "$TAG" \
             out/*.img.xz out/*.sha256 out/os-list.json out/icon.png
       - name: Mirror to Backblaze B2
+        env:
+          # Josh adds these as repository secrets. This step skips when they are missing.
+          B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET: ${{ secrets.B2_BUCKET }}
+          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
         run: |
           if [ -z "$B2_KEY_ID" ] || [ -z "$B2_APPLICATION_KEY" ] || [ -z "$B2_BUCKET" ] || [ -z "$B2_ENDPOINT" ]; then
             echo "::warning::B2 secrets are missing. Skipping the B2 mirror."
@@ -51,6 +55,10 @@ jobs:
           fi
           # B2 speaks the S3 protocol, so the aws CLI on the runner uploads the files.
           export AWS_ACCESS_KEY_ID="$B2_KEY_ID" AWS_SECRET_ACCESS_KEY="$B2_APPLICATION_KEY"
-          export AWS_DEFAULT_REGION=us-east-1
-          aws s3 cp out/ "s3://$B2_BUCKET/releases/${{ github.ref_name }}/" \
+          # The endpoint looks like https://s3.us-west-004.backblazeb2.com. Its second word is the region.
+          region=$(printf '%s' "$B2_ENDPOINT" | sed -E 's#^https?://s3\.([^.]+)\..*#\1#')
+          export AWS_DEFAULT_REGION="$region"
+          # Newer aws CLI versions add checksums that Backblaze can reject.
+          export AWS_REQUEST_CHECKSUM_CALCULATION=when_required AWS_RESPONSE_CHECKSUM_VALIDATION=when_required
+          aws s3 cp out/ "s3://$B2_BUCKET/releases/$TAG/" \
             --recursive --endpoint-url "$B2_ENDPOINT"
