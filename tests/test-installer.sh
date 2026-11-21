@@ -132,3 +132,17 @@ ok "restart settings present in the installer"
 if out=$(bash install/install.sh --readonly-root 2>&1); then bad "--readonly-root worked without raspi-config"; fi
 echo "$out" | grep -q "Raspberry Pi OS" || bad "readonly-root message"
 ok "--readonly-root refuses on non-Pi systems"
+
+# 11. --image-build enables services but starts nothing.
+caddy stop >/dev/null 2>&1 || true
+sleep 1
+mkdir -p /tmp/fakebin2
+printf '#!/bin/sh\necho "systemctl $*" >> /tmp/systemctl.log\n' > /tmp/fakebin2/systemctl; chmod +x /tmp/fakebin2/systemctl
+rm -f /tmp/systemctl.log
+PATH=/tmp/fakebin2:$PATH bash install/install.sh --image-build --harden >/dev/null 2>&1
+grep -q 'systemctl enable caddy' /tmp/systemctl.log || bad "caddy not enabled"
+grep -q 'systemctl enable solar-status.timer' /tmp/systemctl.log || bad "timer not enabled"
+grep -q 'start\|restart' /tmp/systemctl.log && bad "image build started a service"
+[ -f /etc/systemd/system/caddy.service.d/solar.conf ] || bad "restart drop-in missing"
+curl -fsS localhost >/dev/null 2>&1 && bad "caddy runs during image build"
+ok "--image-build enables services and starts none"

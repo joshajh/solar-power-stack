@@ -35,6 +35,8 @@ Options:
   --readonly-root Make the root filesystem read-only (Raspberry Pi OS only).
                   Edits to your site vanish at reboot while this is on. See
                   docs/hardening.md. Implies --harden.
+  --image-build   Prepare a disk image: set everything up and enable the
+                  services, but do not start them. The Pi image build uses this.
   --conf FILE     Read settings from FILE. Default: ./solar.conf if it exists.
   --help          Show this text.
 
@@ -56,6 +58,7 @@ fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 # ----------------------------------------------------------------- options
 PORT_SET=no
 HARDEN=no
+IMAGE_BUILD=no
 READONLY_ROOT=no
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,6 +67,7 @@ while [ $# -gt 0 ]; do
     --name)     [ $# -ge 2 ] || fail "--name needs text."; SITE_NAME="$2"; FLAG_NAME=1; shift 2 ;;
     --conf)     [ $# -ge 2 ] || fail "--conf needs a file."; CONF_FILE="$2"; shift 2 ;;
     --harden)   HARDEN=yes; shift ;;
+    --image-build) IMAGE_BUILD=yes; shift ;;
     --readonly-root) HARDEN=yes; READONLY_ROOT=yes; shift ;;
     --help|-h)  usage; exit 0 ;;
     *)          usage >&2; fail "Unknown option: $1" ;;
@@ -216,14 +220,20 @@ install_status() {
     printf '[Service]\nType=oneshot\nExecStart=/usr/local/bin/solar-status %s\n' "$SITE_DIR" > /etc/systemd/system/solar-status.service
     printf '[Timer]\nOnBootSec=10\nOnUnitActiveSec=60\n[Install]\nWantedBy=timers.target\n' > /etc/systemd/system/solar-status.timer
     systemctl daemon-reload
-    systemctl enable --now solar-status.timer >/dev/null 2>&1
+    if [ "$IMAGE_BUILD" = yes ]; then
+      systemctl enable solar-status.timer >/dev/null 2>&1
+    else
+      systemctl enable --now solar-status.timer >/dev/null 2>&1
+    fi
   else
     say "This device has no systemd, so the status page updates only when you run: solar-status $SITE_DIR"
   fi
-  /usr/local/bin/solar-status "$SITE_DIR"
+  # An image build has no running system to report on yet.
+  [ "$IMAGE_BUILD" = yes ] || /usr/local/bin/solar-status "$SITE_DIR"
 }
 
-have_systemd() { [ -d /run/systemd/system ]; }
+# Inside an image build, systemd is installed but not running. Treat it as present.
+have_systemd() { [ "$IMAGE_BUILD" = yes ] || [ -d /run/systemd/system ]; }
 
 # Make systemd restart Caddy whenever it stops for any reason, after 3 seconds,
 # and never give up however often it stops.
@@ -296,7 +306,9 @@ start_debian() {
     write_restart_dropin
     systemctl daemon-reload
     systemctl enable caddy >/dev/null 2>&1
-    if [ "$changed" = yes ]; then systemctl restart caddy; else systemctl start caddy; fi
+    if [ "$IMAGE_BUILD" = yes ]; then
+      return 0   # the server starts when the image boots
+    elif [ "$changed" = yes ]; then systemctl restart caddy; else systemctl start caddy; fi
   else
     # No systemd (a container, for example). Caddy's admin address answers
     # when Caddy already runs. Then reload the config. Otherwise start Caddy.
@@ -348,8 +360,9 @@ else
   install_status
   changed=no
   if write_caddyfile /etc/caddy/Caddyfile; then changed=yes; fi
-  set_hostname
+  # An image gets its hostname from solar.conf at first boot instead.
+  [ "$IMAGE_BUILD" = yes ] || set_hostname
   [ "$HARDEN" = no ] || harden
   start_debian "$changed"
-  print_address
+  [ "$IMAGE_BUILD" = yes ] || print_address
 fi

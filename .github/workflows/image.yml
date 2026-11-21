@@ -1,0 +1,27 @@
+name: image
+
+# Build the Raspberry Pi image on every version tag and on manual dispatch.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      # QEMU lets the x86 runner build an arm64 image.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - name: Build the image with pi-gen
+        run: image/build.sh "$RUNNER_TEMP/out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: solar-image
+          path: |
+            ${{ runner.temp }}/out/*.img.xz
+            ${{ runner.temp }}/out/*.sha256
+          if-no-files-found: error

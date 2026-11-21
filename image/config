@@ -1,0 +1,14 @@
+# pi-gen settings for the solar-power-stack image.
+IMG_NAME=solar
+RELEASE=bookworm
+TARGET_HOSTNAME=solar
+# SSH stays off. solar.conf turns it on at first boot.
+ENABLE_SSH=0
+# pi-gen needs one user. Image build replaces the password with a random one
+# and never stores it. Nobody logs in with a password.
+FIRST_USER_NAME=solar
+DISABLE_FIRST_BOOT_USER_RENAME=1
+LOCALE_DEFAULT=en_GB.UTF-8
+TIMEZONE_DEFAULT=UTC
+DEPLOY_COMPRESSION=xz
+STAGE_LIST="stage0 stage1 stage2 stage-solar"
