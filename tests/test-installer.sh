@@ -6,13 +6,14 @@ set -euo pipefail
 ok()   { echo "PASS: $*"; }
 bad()  { echo "FAIL: $*"; exit 1; }
 
-apt-get update -qq && apt-get install -y -qq curl >/dev/null
+apt-get update -qq && apt-get install -y -qq curl >/dev/null 2>&1
 cp -r /repo /work && cd /work
 
 # 1. Unsupported OS exits non-zero with a message.
 printf 'ID=plan9\n' > /tmp/os-release
 if out=$(SOLAR_OS_RELEASE=/tmp/os-release bash install/install.sh 2>&1); then bad "unsupported OS exited 0"; fi
-echo "$out" | grep -q "supports Debian" && ok "unsupported OS message"
+echo "$out" | grep -q "supports Debian" || bad "unsupported OS message missing"
+ok "unsupported OS message"
 
 # 2. --help documents every flag and conf key.
 help=$(bash install/install.sh --help)
@@ -37,9 +38,15 @@ after=$(snapshot)
 curl -fsS localhost | grep -q "my edit" || bad "edit lost"
 ok "second run changes nothing and keeps the edit"
 
-# 5. solar.conf sets the site name; a flag overrides it.
+# 5. solar.conf sets the site name.
 rm -rf /srv/site
 printf '# comment\nsite_name=From Conf\n' > /tmp/solar.conf
 bash install/install.sh --conf /tmp/solar.conf >/dev/null
 curl -fsS localhost | grep -q "From Conf" || bad "solar.conf ignored"
 ok "solar.conf site_name applied"
+
+# 6. A name with HTML characters appears escaped and intact; a flag beats solar.conf.
+rm -rf /srv/site
+bash install/install.sh --conf /tmp/solar.conf --name 'A&B <x>' >/dev/null
+curl -fsS localhost | grep -q '<h1>A&amp;B &lt;x&gt;</h1>' || bad "name not escaped"
+ok "flag overrides solar.conf and the name is escaped"

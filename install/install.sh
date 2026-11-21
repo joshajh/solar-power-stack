@@ -110,21 +110,31 @@ install_caddy_debian() {
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   # Debian 12 and newer carry Caddy in their own package list.
-  apt-get install -y -qq caddy >/dev/null
+  apt-get install -y -qq caddy >/dev/null \
+    || fail "Could not install Caddy. This installer needs Debian 12 or newer."
+  # avahi lets other devices find this one at <hostname>.local.
+  apt-get install -y -qq avahi-daemon >/dev/null || say "Could not install avahi. Use the IP address instead of the .local name."
 }
 
 # Copy the starter site without replacing any file that already exists.
 install_site() {
   [ -d "$TEMPLATE_DIR" ] || fail "Cannot find the starter site at $TEMPLATE_DIR."
   mkdir -p "$SITE_DIR"
+  # The starter page holds a placeholder for the site name. Fill it in only
+  # when this run creates the page, so a page you edited stays as you left it.
+  local fresh=no
+  [ -e "$SITE_DIR/index.html" ] || fresh=yes
   # cp -n skips files that exist, so your edits survive a second run.
-  cp -rn "$TEMPLATE_DIR"/. "$SITE_DIR"/
-  # The starter page holds a placeholder. Fill it in only when the file
-  # still contains it, which means you have not edited the page yet.
-  if grep -q '{{SITE_NAME}}' "$SITE_DIR/index.html"; then
-    # Escape characters that mean something to sed.
-    safe_name=$(printf '%s' "$SITE_NAME" | sed -e 's/[&|\\]/\\&/g' -e 's/</\&lt;/g')
-    sed -i "s|{{SITE_NAME}}|$safe_name|g" "$SITE_DIR/index.html"
+  # Newer versions of cp report skipped files as an error, so ignore that.
+  cp -rn "$TEMPLATE_DIR"/. "$SITE_DIR"/ || true
+  if [ "$fresh" = yes ]; then
+    # Escape the characters that mean something in HTML. Quoting $name below
+    # stops bash from treating an "&" in it as a placeholder.
+    local name=${SITE_NAME//&/"&amp;"}
+    name=${name//</"&lt;"}; name=${name//>/"&gt;"}
+    local page
+    page=$(<"$SITE_DIR/index.html")
+    printf '%s\n' "${page//\{\{SITE_NAME\}\}/"$name"}" > "$SITE_DIR/index.html"
   fi
   # If you ran the script with sudo, give the site to your own user.
   if [ -n "${SUDO_USER:-}" ]; then chown -R "$SUDO_USER" "$SITE_DIR"; fi
@@ -140,7 +150,7 @@ write_caddyfile() {
 # Written by solar-power-stack install.sh. Edit with care: the installer
 # replaces this file when you run it again with different options.
 :$PORT {
-	root * $SITE_DIR
+	root * "$SITE_DIR"
 	file_server
 }
 CADDY
@@ -175,10 +185,20 @@ start_debian() {
     # "caddy start" fails harmlessly when Caddy already runs.
     caddy start --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
   fi
+  # Check that the server answers before you tell the user it runs.
+  local _
+  for _ in 1 2 3 4 5; do
+    curl -fsS "http://127.0.0.1:$PORT" >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  fail "Caddy did not answer on port $PORT. Run: caddy validate --config /etc/caddy/Caddyfile"
 }
 
 set_hostname() {
   [ -n "$HOSTNAME_WANTED" ] || return 0
+  case "$HOSTNAME_WANTED" in
+    -*|*[!A-Za-z0-9-]*) fail "The hostname may contain only letters, digits and hyphens." ;;
+  esac
   if have_systemd && command -v hostnamectl >/dev/null 2>&1; then
     hostnamectl set-hostname "$HOSTNAME_WANTED"
   else
@@ -187,10 +207,10 @@ set_hostname() {
 }
 
 print_address() {
-  local ip name
+  local ip name suffix=""
   ip=$(hostname -I 2>/dev/null | awk '{print $1}')
   name=$(hostname)
-  local suffix=""; [ "$PORT" = 80 ] || suffix=":$PORT"
+  [ "$PORT" = 80 ] || suffix=":$PORT"
   say ""
   say "Your server is running. Open one of these addresses in a browser:"
   [ -n "$ip" ] && say "  http://$ip$suffix"
