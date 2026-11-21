@@ -18,3 +18,7 @@ jobs:
         run: |
           docker run --rm --cap-add NET_ADMIN -e SOLAR_REQUIRE_NET=1 --platform ${{ matrix.platform }} \
             -v "$PWD:/repo:ro" debian:12 bash /repo/tests/test-installer.sh
+      - name: Run the first-boot script test
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/repo:ro" debian:12 bash /repo/tests/test-firstboot.sh
