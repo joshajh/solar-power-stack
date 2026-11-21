@@ -128,7 +128,7 @@ if [ "$READONLY_ROOT" = yes ] && ! command -v raspi-config >/dev/null 2>&1; then
   fail "--readonly-root works only on Raspberry Pi OS (raspi-config not found)."
 fi
 # With the read-only root on, every change vanishes at reboot. Refuse to install.
-if [ "$OS" = debian ] && command -v raspi-config >/dev/null 2>&1 \
+if [ "$OS" = debian ] && [ "$IMAGE_BUILD" = no ] && command -v raspi-config >/dev/null 2>&1 \
    && [ "$(raspi-config nonint get_overlay_now 2>/dev/null)" = 0 ]; then
   fail "The read-only root is on. Turn it off first: sudo raspi-config nonint disable_overlayfs, then reboot. See docs/hardening.md."
 fi

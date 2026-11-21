@@ -3,7 +3,8 @@
 # machine uses, then add the first-boot service.
 
 # --image-build sets everything up without starting the server.
-/opt/solar/install/install.sh --image-build --harden
+# </dev/null: this script arrives on stdin, so keep the installer from reading it.
+/opt/solar/install/install.sh --image-build --harden </dev/null
 
 # First boot: apply solar.conf from the boot partition.
 install -m 755 /opt/solar/first-boot/solar-firstboot.sh /usr/local/bin/solar-firstboot

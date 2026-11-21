@@ -37,7 +37,7 @@ Edit `solar.conf` on the card's boot partition before the first boot. The file i
 | `wifi_ssid`, `wifi_password`, `wifi_country` | Wi-Fi network, password (omit for an open network) and two-letter country code. |
 | `ssh=true`, `ssh_key` | Turn SSH on. SSH accepts keys only, so `ssh=true` without `ssh_key` leaves SSH off and logs the reason. |
 
-The Wi-Fi password stays in `solar.conf` on the card after the first boot. Delete the line when you no longer need it.
+After the first boot, the device replaces the `wifi_password` and `ssh_key` lines with comments, so the card does not keep them. To connect to a different network, add the lines again and flash the card again.
 
 The image has a user named `solar` with a random password that nobody knows. This is why SSH needs a key.
 

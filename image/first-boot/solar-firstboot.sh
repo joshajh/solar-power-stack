@@ -64,7 +64,12 @@ ssid=$(get wifi_ssid)
 if [ -n "$ssid" ]; then
   country=$(get wifi_country)
   # The Wi-Fi radio stays off until you set a country.
-  if [ -n "$country" ]; then raspi-config nonint do_wifi_country "$country" || log "could not set the Wi-Fi country."; fi
+  if [ -n "$country" ]; then
+    # raspi-config reads SUDO_USER, as it does in pi-gen's own build scripts.
+    SUDO_USER="$SSH_USER" raspi-config nonint do_wifi_country "$country" || log "could not set the Wi-Fi country."
+  else
+    log "wifi_ssid is set but wifi_country is missing. The Wi-Fi radio may stay off."
+  fi
   password=$(get wifi_password)
   conn="$NM_DIR/solar-wifi.nmconnection"
   mkdir -p "$NM_DIR"
@@ -99,7 +104,9 @@ fi
 # -------------------------------------------------------------------- SSH
 # SSH stays off unless solar.conf says ssh=true. The device has no password
 # you know, so SSH also needs your public key.
-if [ "$(get ssh)" = true ]; then
+sshval=$(get ssh)
+case "$sshval" in ''|true|false) ;; *) log "ssh=$sshval is not understood. Use ssh=true. SSH stays off." ;; esac
+if [ "$sshval" = true ]; then
   key=$(get ssh_key)
   if [ -z "$key" ]; then
     log "ssh=true needs an ssh_key line in solar.conf. SSH stays off."
@@ -117,6 +124,13 @@ if [ "$(get ssh)" = true ]; then
       systemctl enable --now ssh
     fi
   fi
+fi
+
+# --------------------------------------------------- remove stored secrets
+# The boot partition is readable by anyone who holds the card. Blank the
+# Wi-Fi password and the SSH key line now that the device has copied them.
+if [ -f "$CONF" ]; then
+  sed -i -E 's/^(wifi_password|ssh_key)=.*/#\1= (removed after the first boot)/' "$CONF" 2>/dev/null || log "could not clean $CONF."
 fi
 
 # ------------------------------------------------------------ finish up

@@ -32,6 +32,11 @@ grep -q 'systemctl disable solar-firstboot.service' $CALLS || bad "self-disable"
 [ -f /tmp/state/firstboot.done ] || bad "done marker"
 ok "full config applied, then the service disables itself"
 
+grep -q '^#wifi_password= (removed' /tmp/solar.conf || bad "wifi password not removed"
+grep -q 'AAAAtest' /tmp/solar.conf && bad "ssh key not removed"
+grep -q '^hostname=garden' /tmp/solar.conf || bad "other keys lost"
+ok "secrets removed from solar.conf after use"
+
 # 2. No ssh line: SSH never turns on.
 rm -rf /tmp/nm /tmp/state /home/solar/.ssh
 printf 'hostname=plain\n' > /tmp/solar.conf
