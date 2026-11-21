@@ -29,6 +29,12 @@ Options:
   --port N        Port the server listens on. Default: 80 (8080 on Termux).
   --site-dir DIR  Folder that holds your site. Default: /srv/site.
   --name TEXT     Site name shown on the starter page. Default: My Solar Server.
+  --harden        Protect the device against power cuts: automatic security
+                  updates, faster Caddy restarts, fewer SD-card writes and a
+                  disk check at boot. The Raspberry Pi image turns this on.
+  --readonly-root Make the root filesystem read-only (Raspberry Pi OS only).
+                  Edits to your site vanish at reboot while this is on. See
+                  docs/hardening.md. Implies --harden.
   --conf FILE     Read settings from FILE. Default: ./solar.conf if it exists.
   --help          Show this text.
 
@@ -49,12 +55,16 @@ fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
 # ----------------------------------------------------------------- options
 PORT_SET=no
+HARDEN=no
+READONLY_ROOT=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --port)     [ $# -ge 2 ] || fail "--port needs a number."; PORT="$2"; PORT_SET=yes; shift 2 ;;
     --site-dir) [ $# -ge 2 ] || fail "--site-dir needs a folder."; SITE_DIR="$2"; shift 2 ;;
     --name)     [ $# -ge 2 ] || fail "--name needs text."; SITE_NAME="$2"; FLAG_NAME=1; shift 2 ;;
     --conf)     [ $# -ge 2 ] || fail "--conf needs a file."; CONF_FILE="$2"; shift 2 ;;
+    --harden)   HARDEN=yes; shift ;;
+    --readonly-root) HARDEN=yes; READONLY_ROOT=yes; shift ;;
     --help|-h)  usage; exit 0 ;;
     *)          usage >&2; fail "Unknown option: $1" ;;
   esac
@@ -202,11 +212,63 @@ install_status() {
 
 have_systemd() { [ -d /run/systemd/system ]; }
 
-# Make systemd restart Caddy whenever it stops for any reason.
+# Make systemd restart Caddy whenever it stops for any reason, after 3 seconds,
+# and never give up however often it stops.
 write_restart_dropin() {
   local dir=/etc/systemd/system/caddy.service.d
   mkdir -p "$dir"
-  printf '[Service]\nRestart=always\nRestartSec=3\n' >"$dir/solar.conf"
+  printf '[Unit]\nStartLimitIntervalSec=0\n[Service]\nRestart=always\nRestartSec=3\n' >"$dir/solar.conf"
+}
+
+# Write a file only when its content differs, so a second run changes nothing.
+put_file() {
+  local target=$1 content=$2
+  mkdir -p "$(dirname "$target")"
+  if [ "$(cat "$target" 2>/dev/null || true)" != "$content" ]; then
+    printf '%s\n' "$content" > "$target"
+  fi
+}
+
+# Power-cut protection. Each step is explained in docs/hardening.md.
+harden() {
+  say "Hardening this device against power cuts..."
+  export DEBIAN_FRONTEND=noninteractive
+
+  # 1. Install security updates by themselves, and nothing else.
+  apt-get install -y -qq unattended-upgrades >/dev/null
+  put_file /etc/apt/apt.conf.d/20auto-upgrades 'APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";'
+  # This list overrides the default and allows only Debian security updates.
+  put_file /etc/apt/apt.conf.d/52solar-security-only 'Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";'
+
+  # 2. Keep the journal in memory so it does not write to the SD card.
+  put_file /etc/systemd/journald.conf.d/solar.conf '[Journal]
+Storage=volatile
+RuntimeMaxUse=32M'
+
+  # 3. Keep /var/log in memory too. This is the simple stand-in for log2ram:
+  # logs vanish at reboot, and the SD card takes far fewer writes.
+  if ! grep -qE '^[^#]*[[:space:]]/var/log[[:space:]]' /etc/fstab 2>/dev/null; then
+    echo 'tmpfs /var/log tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=32m 0 0' >> /etc/fstab
+  fi
+
+  # 4. Check and repair the filesystem at every boot (Raspberry Pi kernel option).
+  local cmdline
+  for cmdline in /boot/firmware/cmdline.txt /boot/cmdline.txt; do
+    if [ -f "$cmdline" ] && ! grep -q 'fsck.repair=yes' "$cmdline"; then
+      sed -i '1 s/$/ fsck.repair=yes/' "$cmdline"
+    fi
+  done
+
+  # 5. Optional read-only root. Only Raspberry Pi OS has the tool for it.
+  if [ "$READONLY_ROOT" = yes ]; then
+    if command -v raspi-config >/dev/null 2>&1; then
+      raspi-config nonint enable_overlayfs
+      say "The read-only root starts after the next reboot."
+    else
+      fail "--readonly-root works only on Raspberry Pi OS (raspi-config not found)."
+    fi
+  fi
 }
 
 start_debian() {
@@ -265,6 +327,7 @@ else
   changed=no
   if write_caddyfile /etc/caddy/Caddyfile; then changed=yes; fi
   set_hostname
+  [ "$HARDEN" = no ] || harden
   start_debian "$changed"
   print_address
 fi

@@ -97,3 +97,29 @@ ok "battery fields appear with Termux:API"
 # 9. Victron stays off by default: no victron block.
 grep -q victron /srv/site/status.json && bad "victron on by default"
 ok "victron off by default"
+
+# 10. --harden writes each protection, and a second run changes nothing.
+bash install/install.sh --harden >/dev/null 2>&1
+grep -q 'Unattended-Upgrade "1"' /etc/apt/apt.conf.d/20auto-upgrades || bad "auto-upgrades"
+grep -q 'security' /etc/apt/apt.conf.d/52solar-security-only || bad "security-only origins"
+grep -q 'Storage=volatile' /etc/systemd/journald.conf.d/solar.conf || bad "volatile journal"
+grep -q '^tmpfs /var/log' /etc/fstab || bad "tmpfs /var/log"
+ok "--harden wrote updates, journal and log settings"
+printf 'console=tty1 root=/dev/mmcblk0p2 rootwait\n' > /tmp/cmdline.txt
+mkdir -p /boot/firmware && cp /tmp/cmdline.txt /boot/firmware/cmdline.txt
+bash install/install.sh --harden >/dev/null 2>&1
+grep -q 'fsck.repair=yes' /boot/firmware/cmdline.txt || bad "fsck.repair"
+h1=$(sha256sum /etc/fstab /boot/firmware/cmdline.txt /etc/apt/apt.conf.d/*solar* /etc/systemd/journald.conf.d/solar.conf)
+bash install/install.sh --harden >/dev/null 2>&1
+h2=$(sha256sum /etc/fstab /boot/firmware/cmdline.txt /etc/apt/apt.conf.d/*solar* /etc/systemd/journald.conf.d/solar.conf)
+[ "$h1" = "$h2" ] || bad "second --harden run changed files"
+[ "$(grep -c '/var/log' /etc/fstab)" = 1 ] || bad "fstab line duplicated"
+[ "$(grep -o 'fsck.repair=yes' /boot/firmware/cmdline.txt | wc -l)" = 1 ] || bad "cmdline duplicated"
+ok "fsck.repair added once; --harden is idempotent"
+# The Caddy restart settings live in the systemd drop-in code path.
+grep -q 'Restart=always' install/install.sh && grep -q 'StartLimitIntervalSec=0' install/install.sh || bad "restart settings"
+ok "restart settings present in the installer"
+# --readonly-root fails with a clear message off Raspberry Pi OS.
+if out=$(bash install/install.sh --readonly-root 2>&1); then bad "--readonly-root worked without raspi-config"; fi
+echo "$out" | grep -q "Raspberry Pi OS" || bad "readonly-root message"
+ok "--readonly-root refuses on non-Pi systems"
