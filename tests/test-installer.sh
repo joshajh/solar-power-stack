@@ -117,7 +117,8 @@ h2=$(sha256sum /etc/fstab /boot/firmware/cmdline.txt /etc/apt/apt.conf.d/*solar*
 [ "$(grep -o 'fsck.repair=yes' /boot/firmware/cmdline.txt | wc -l)" = 1 ] || bad "cmdline duplicated"
 ok "fsck.repair added once; --harden is idempotent"
 # The Caddy restart settings live in the systemd drop-in code path.
-grep -q 'Restart=always' install/install.sh && grep -q 'StartLimitIntervalSec=0' install/install.sh || bad "restart settings"
+grep -q 'Restart=always' install/install.sh || bad "restart setting"
+grep -q 'StartLimitIntervalSec=0' install/install.sh || bad "restart limit setting"
 ok "restart settings present in the installer"
 # --readonly-root fails with a clear message off Raspberry Pi OS.
 if out=$(bash install/install.sh --readonly-root 2>&1); then bad "--readonly-root worked without raspi-config"; fi

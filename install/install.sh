@@ -239,6 +239,7 @@ harden() {
   put_file /etc/apt/apt.conf.d/20auto-upgrades 'APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";'
   # This list overrides the default and allows only Debian security updates.
+  # shellcheck disable=SC2016 # apt, not the shell, expands ${distro_codename}
   put_file /etc/apt/apt.conf.d/52solar-security-only 'Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";'
 
   # 2. Keep the journal in memory so it does not write to the SD card.
