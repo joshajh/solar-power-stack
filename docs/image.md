@@ -17,7 +17,7 @@ The build uses [pi-gen](https://github.com/RPi-Distro/pi-gen), pinned to the rel
 image/build.sh <output-dir>
 ```
 
-The script needs Docker, and on an x86 machine it needs QEMU for arm64. It writes `<name>.img.xz` and `<name>.img.xz.sha256` to the output directory. The `image` workflow runs the same script on every tag (`v*`) and on manual dispatch, and uploads both files as the artefact `solar-image`.
+The script needs Docker, and on an x86 machine it needs QEMU for arm64. It writes `<name>.img.xz` and `<name>.img.xz.sha256` to the output directory. The `image` workflow runs the same script on manual dispatch, and the `release` workflow runs it on every version tag (`v*`). Both upload the two files as the artefact `solar-image`.
 
 ## What the image contains
 
@@ -40,6 +40,8 @@ Edit `solar.conf` on the card's boot partition before the first boot. The file i
 After the first boot, the device replaces the `wifi_password` and `ssh_key` lines with comments, so the card does not keep them. To connect to a different network, add the lines again and flash the card again.
 
 The image has a user named `solar` with a random password that nobody knows. This is why SSH needs a key.
+
+The status page keys (`status_public`, `victron`, `victron_device`) do not work in the boot-partition `solar.conf`. The image ships with the defaults (status page private, Victron reader off). To change them, put the keys in a file and run `sudo /opt/solar/install/install.sh --conf <file>` on the Pi. With the read-only root on, turn it off first (see `docs/hardening.md`).
 
 ## Tests
 

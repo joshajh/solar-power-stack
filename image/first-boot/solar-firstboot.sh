@@ -105,7 +105,7 @@ fi
 # SSH stays off unless solar.conf says ssh=true. The device has no password
 # you know, so SSH also needs your public key.
 sshval=$(get ssh)
-case "$sshval" in ''|true|false) ;; *) log "ssh=$sshval is not understood. Use ssh=true. SSH stays off." ;; esac
+case "$sshval" in ''|true|false) ;; *) log "ssh=$sshval is not a valid value. Use ssh=true. SSH stays off." ;; esac
 if [ "$sshval" = true ]; then
   key=$(get ssh_key)
   if [ -z "$key" ]; then

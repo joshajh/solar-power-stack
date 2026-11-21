@@ -14,3 +14,5 @@ Every device reports uptime, device model, load, free disk space and CPU tempera
 The installer reads `status_public` from `solar.conf`. The default is `false`: Caddy answers requests for `/status` and `/status.json` with 403 unless the request comes from a private address (192.168.x.x, 10.x.x.x, 172.16-31.x.x or localhost). Set `status_public=true` to serve the page to everyone.
 
 If you publish the site through a tunnel such as cloudflared, Caddy sees the tunnel's local address, which counts as private. In that case the page stays visible on the internet even with `status_public=false`. Set up the tunnel to skip `/status`, or accept that the page is public.
+
+The installer copies `solar.conf` to `/etc/solar/solar.conf` only when you pass `--conf` or run it in a folder that holds a `solar.conf`. If you run it again without one, the copy and its settings stay as they were. Edit `/etc/solar/solar.conf` to change `victron` settings, or run the installer with the new file. The Raspberry Pi image does not read these keys from the boot partition.
