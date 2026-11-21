@@ -22,3 +22,7 @@ jobs:
         run: |
           docker run --rm --platform ${{ matrix.platform }} \
             -v "$PWD:/repo:ro" debian:12 bash /repo/tests/test-firstboot.sh
+      - name: Run the simulated Termux test
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} \
+            -v "$PWD:/repo:ro" debian:12 bash /repo/tests/test-termux.sh

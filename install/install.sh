@@ -14,8 +14,11 @@ HOSTNAME_WANTED=""
 STATUS_PUBLIC=false
 CONF_FILE=""
 # The starter site lives next to this script's parent directory.
-REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# When you pipe the script into bash (curl ... | bash), there is no folder
+# next to it. ensure_repo() then downloads the starter files.
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-.}")/.." 2>/dev/null && pwd || echo /nonexistent)"
 TEMPLATE_DIR="$REPO_DIR/site-template"
+SRC_URL="${SOLAR_SRC_URL:-https://github.com/joshajh/solar-power-stack/archive/refs/heads/main.tar.gz}"
 # Tests point this at a fake os-release file.
 OS_RELEASE="${SOLAR_OS_RELEASE:-/etc/os-release}"
 
@@ -57,13 +60,14 @@ fail() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
 # ----------------------------------------------------------------- options
 PORT_SET=no
+SITE_DIR_SET=no
 HARDEN=no
 IMAGE_BUILD=no
 READONLY_ROOT=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --port)     [ $# -ge 2 ] || fail "--port needs a number."; PORT="$2"; PORT_SET=yes; shift 2 ;;
-    --site-dir) [ $# -ge 2 ] || fail "--site-dir needs a folder."; SITE_DIR="$2"; shift 2 ;;
+    --site-dir) [ $# -ge 2 ] || fail "--site-dir needs a folder."; SITE_DIR="$2"; SITE_DIR_SET=yes; shift 2 ;;
     --name)     [ $# -ge 2 ] || fail "--name needs text."; SITE_NAME="$2"; FLAG_NAME=1; shift 2 ;;
     --conf)     [ $# -ge 2 ] || fail "--conf needs a file."; CONF_FILE="$2"; shift 2 ;;
     --harden)   HARDEN=yes; shift ;;
@@ -113,11 +117,118 @@ case "$(uname -m)" in
 esac
 
 # ---------------------------------------------------------- Termux hook
-# TERMUX HOOK: the Termux install path fills this function in. It will
-# install Caddy with pkg, keep the phone awake and start the server at boot.
+# Where the status script and its settings go. Termux has no /usr/local or /etc.
+BIN_DIR=/usr/local/bin
+CONF_DIR=/etc/solar
+if [ "$OS" = termux ]; then
+  BIN_DIR="$PREFIX/bin"
+  CONF_DIR="$PREFIX/etc/solar"
+  [ "$PORT_SET" = yes ] || PORT=8080          # Android blocks ports below 1024
+  [ "$SITE_DIR_SET" = yes ] || SITE_DIR="$HOME/site"
+fi
+
+# Download the starter files when the script runs without its folder.
+ensure_repo() {
+  if [ -d "$TEMPLATE_DIR" ] && [ -f "$REPO_DIR/status/status.sh" ]; then return 0; fi
+  command -v curl >/dev/null 2>&1 || fail "curl is missing. Install it, then run this script again."
+  say "Downloading the starter files..."
+  local dir
+  dir=$(mktemp -d)
+  curl -fsSL "$SRC_URL" | tar -xz -C "$dir" --strip-components=1 \
+    || fail "Could not download the starter files from $SRC_URL."
+  REPO_DIR=$dir
+  TEMPLATE_DIR="$dir/site-template"
+}
+
+# TERMUX HOOK: everything that only a phone needs.
 termux_setup() {
-  say "Termux support is not ready yet."
-  return 1
+  local caddyfile="$PREFIX/etc/caddy/Caddyfile" changed=no
+
+  say "Installing Caddy..."
+  # termux-api is the command-line half of Termux:API. The Android app is a separate install.
+  pkg install -y caddy curl termux-api >/dev/null 2>&1 \
+    || fail "pkg could not install Caddy. Run: pkg update, then run this script again."
+
+  ensure_repo
+  install_site
+  install_status
+  write_caddyfile "$caddyfile" && changed=yes
+
+  # solar-serve starts Caddy and refreshes the status page every minute.
+  # The boot script and this installer both run it.
+  cat >"$PREFIX/bin/solar-serve" <<SERVE
+#!$PREFIX/bin/sh
+# Keep the phone awake, start Caddy and refresh the status page every minute.
+export SOLAR_CONF="$CONF_DIR/solar.conf"
+pidfile="$PREFIX/tmp/solar-serve.pid"
+# Stop if another copy runs already.
+if [ -f "\$pidfile" ] && kill -0 "\$(cat "\$pidfile")" 2>/dev/null; then exit 0; fi
+echo \$\$ >"\$pidfile"
+termux-wake-lock
+while true; do
+  # Every minute: start Caddy if it stopped, then refresh the status page.
+  if ! curl -fsS http://127.0.0.1:2019/config/ >/dev/null 2>&1; then
+    caddy run --config "$caddyfile" >"$HOME/solar-caddy.log" 2>&1 &
+  fi
+  "$BIN_DIR/solar-status" "$SITE_DIR"
+  sleep 60
+done
+SERVE
+  chmod 755 "$PREFIX/bin/solar-serve"
+
+  # Termux:Boot runs every script in this folder when the phone starts.
+  mkdir -p "$HOME/.termux/boot"
+  printf '#!%s/bin/sh\n%s/bin/solar-serve\n' "$PREFIX" "$PREFIX" >"$HOME/.termux/boot/solar-start.sh"
+  chmod 755 "$HOME/.termux/boot/solar-start.sh"
+
+  # Start the server now. A running Caddy only needs a reload when the config changed.
+  if curl -fsS http://127.0.0.1:2019/config/ >/dev/null 2>&1; then
+    if [ "$changed" = yes ]; then caddy reload --config "$caddyfile" >/dev/null 2>&1 || true; fi
+  fi
+  # Stop an older solar-serve first, so exactly one copy runs. It starts Caddy when needed.
+  if [ -f "$PREFIX/tmp/solar-serve.pid" ]; then
+    kill "$(cat "$PREFIX/tmp/solar-serve.pid")" 2>/dev/null || true
+    rm -f "$PREFIX/tmp/solar-serve.pid"
+  fi
+  nohup "$PREFIX/bin/solar-serve" >/dev/null 2>&1 &
+  local _
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    curl -fsS "http://127.0.0.1:$PORT" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  curl -fsS "http://127.0.0.1:$PORT" >/dev/null 2>&1 \
+    || fail "Caddy did not answer on port $PORT. Look at $HOME/solar-caddy.log"
+
+  termux_check_addons
+  termux_battery_help
+  print_address
+}
+
+# Tell the user which Android apps are missing.
+termux_check_addons() {
+  local packages
+  # pm lists the installed apps. It may refuse to run on some phones.
+  if packages=$(pm list packages 2>/dev/null) && [ -n "$packages" ]; then
+    echo "$packages" | grep -q 'com.termux.boot' \
+      || say "MISSING: Termux:Boot. Install it from F-Droid and open it once. Without it, the server does not start after a reboot."
+  else
+    say "Check that Termux:Boot is installed (F-Droid) and that you opened it once. Without it, the server does not start after a reboot."
+  fi
+  if ! timeout 10 termux-battery-status 2>/dev/null | grep -q percentage; then
+    say "MISSING: Termux:API. Install it from F-Droid and open it once. The status page then shows the battery."
+  fi
+}
+
+# Keep Android from stopping Termux in the background.
+termux_battery_help() {
+  # This opens Android's list of battery-optimisation settings, if the phone allows it.
+  am start -a android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS >/dev/null 2>&1 || true
+  say ""
+  say "Do this once so Android keeps the server running:"
+  say "  1. Open Settings, Apps, Termux, Battery."
+  say "  2. Choose Unrestricted (the name differs between phones)."
+  say "  3. Repeat for Termux:Boot and Termux:API."
+  say "  4. Leave the phone on its charger with Wi-Fi on."
 }
 
 # Stop early if the options cannot work on this device.
@@ -209,15 +320,15 @@ CADDY
 
 # Install the status script, save the settings it reads and write the first page.
 install_status() {
-  install -m 755 "$REPO_DIR/status/status.sh" /usr/local/bin/solar-status
-  mkdir -p /etc/solar
+  install -m 755 "$REPO_DIR/status/status.sh" "$BIN_DIR/solar-status"
+  mkdir -p "$CONF_DIR"
   # Keep a copy of solar.conf where the status script looks for it.
   if [ -n "$CONF_FILE" ]; then
-    cmp -s "$CONF_FILE" /etc/solar/solar.conf 2>/dev/null || cp "$CONF_FILE" /etc/solar/solar.conf
+    cmp -s "$CONF_FILE" "$CONF_DIR/solar.conf" 2>/dev/null || cp "$CONF_FILE" "$CONF_DIR/solar.conf"
   fi
   if have_systemd; then
     # A timer runs the script every minute.
-    printf '[Service]\nType=oneshot\nExecStart=/usr/local/bin/solar-status %s\n' "$SITE_DIR" > /etc/systemd/system/solar-status.service
+    printf '[Service]\nType=oneshot\nExecStart=%s/solar-status %s\n' "$BIN_DIR" "$SITE_DIR" > /etc/systemd/system/solar-status.service
     printf '[Timer]\nOnBootSec=10\nOnUnitActiveSec=60\n[Install]\nWantedBy=timers.target\n' > /etc/systemd/system/solar-status.timer
     systemctl daemon-reload
     if [ "$IMAGE_BUILD" = yes ]; then
@@ -225,11 +336,11 @@ install_status() {
     else
       systemctl enable --now solar-status.timer >/dev/null 2>&1
     fi
-  else
+  elif [ "$OS" != termux ]; then
     say "This device has no systemd, so the status page updates only when you run: solar-status $SITE_DIR"
   fi
   # An image build has no running system to report on yet.
-  [ "$IMAGE_BUILD" = yes ] || /usr/local/bin/solar-status "$SITE_DIR"
+  [ "$IMAGE_BUILD" = yes ] || "$BIN_DIR/solar-status" "$SITE_DIR"
 }
 
 # Inside an image build, systemd is installed but not running. Treat it as present.
@@ -352,10 +463,10 @@ print_address() {
 
 # -------------------------------------------------------------------- main
 if [ "$OS" = termux ]; then
-  [ "$PORT_SET" = yes ] || PORT=8080
-  termux_setup || fail "The Termux setup did not finish."
+  termux_setup
 else
   install_caddy_debian
+  ensure_repo
   install_site
   install_status
   changed=no
