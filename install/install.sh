@@ -116,6 +116,19 @@ termux_setup() {
   return 1
 }
 
+# Stop early if the options cannot work on this device.
+if [ "$OS" = termux ] && [ "$HARDEN" = yes ]; then
+  fail "--harden and --readonly-root work only on Debian systems, not on Termux."
+fi
+if [ "$READONLY_ROOT" = yes ] && ! command -v raspi-config >/dev/null 2>&1; then
+  fail "--readonly-root works only on Raspberry Pi OS (raspi-config not found)."
+fi
+# With the read-only root on, every change vanishes at reboot. Refuse to install.
+if [ "$OS" = debian ] && command -v raspi-config >/dev/null 2>&1 \
+   && [ "$(raspi-config nonint get_overlay_now 2>/dev/null)" = 0 ]; then
+  fail "The read-only root is on. Turn it off first: sudo raspi-config nonint disable_overlayfs, then reboot. See docs/hardening.md."
+fi
+
 # ------------------------------------------------------------ Debian steps
 install_caddy_debian() {
   [ "$(id -u)" -eq 0 ] || fail "Run this script as root: sudo ./install.sh"
@@ -234,13 +247,15 @@ harden() {
   say "Hardening this device against power cuts..."
   export DEBIAN_FRONTEND=noninteractive
 
+  apt-get update -qq
   # 1. Install security updates by themselves, and nothing else.
   apt-get install -y -qq unattended-upgrades >/dev/null
   put_file /etc/apt/apt.conf.d/20auto-upgrades 'APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";'
-  # This list overrides the default and allows only Debian security updates.
+  # Clear Debian's default list, then allow only Debian security updates.
   # shellcheck disable=SC2016 # apt, not the shell, expands ${distro_codename}
-  put_file /etc/apt/apt.conf.d/52solar-security-only 'Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";'
+  put_file /etc/apt/apt.conf.d/52solar-security-only '#clear Unattended-Upgrade::Origins-Pattern;
+Unattended-Upgrade::Origins-Pattern:: "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";'
 
   # 2. Keep the journal in memory so it does not write to the SD card.
   put_file /etc/systemd/journald.conf.d/solar.conf '[Journal]
@@ -249,9 +264,16 @@ RuntimeMaxUse=32M'
 
   # 3. Keep /var/log in memory too. This is the simple stand-in for log2ram:
   # logs vanish at reboot, and the SD card takes far fewer writes.
+  # nofail: a problem with this line never stops the boot.
   if ! grep -qE '^[^#]*[[:space:]]/var/log[[:space:]]' /etc/fstab 2>/dev/null; then
-    echo 'tmpfs /var/log tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=32m 0 0' >> /etc/fstab
+    printf '\ntmpfs /var/log tmpfs defaults,noatime,nosuid,nodev,mode=0755,size=32m,nofail 0 0\n' >> /etc/fstab
   fi
+  # An empty /var/log has none of the folders that programs expect. Create
+  # them at every boot. Without this, the daily update job crashes.
+  put_file /etc/tmpfiles.d/solar-log.conf 'd /var/log/apt 0755 root root -
+d /var/log/unattended-upgrades 0755 root root -
+d /var/log/caddy 0755 caddy caddy -'
+
 
   # 4. Check and repair the filesystem at every boot (Raspberry Pi kernel option).
   local cmdline
@@ -263,12 +285,8 @@ RuntimeMaxUse=32M'
 
   # 5. Optional read-only root. Only Raspberry Pi OS has the tool for it.
   if [ "$READONLY_ROOT" = yes ]; then
-    if command -v raspi-config >/dev/null 2>&1; then
-      raspi-config nonint enable_overlayfs
-      say "The read-only root starts after the next reboot."
-    else
-      fail "--readonly-root works only on Raspberry Pi OS (raspi-config not found)."
-    fi
+    raspi-config nonint enable_overlayfs || fail "raspi-config could not enable the read-only root."
+    say "The read-only root starts after the next reboot."
   fi
 }
 

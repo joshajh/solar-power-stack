@@ -101,7 +101,11 @@ ok "victron off by default"
 # 10. --harden writes each protection, and a second run changes nothing.
 bash install/install.sh --harden >/dev/null 2>&1
 grep -q 'Unattended-Upgrade "1"' /etc/apt/apt.conf.d/20auto-upgrades || bad "auto-upgrades"
-grep -q 'security' /etc/apt/apt.conf.d/52solar-security-only || bad "security-only origins"
+# The effective list must hold the security entry only (Debian's defaults cleared).
+n=$(apt-config dump | grep -c 'Unattended-Upgrade::Origins-Pattern::')
+[ "$n" = 1 ] || bad "origins list has $n entries, expected only the security one"
+apt-config dump | grep 'Origins-Pattern::' | grep -q 'security' || bad "security-only origins"
+grep -q 'unattended-upgrades' /etc/tmpfiles.d/solar-log.conf || bad "tmpfiles for log dirs"
 grep -q 'Storage=volatile' /etc/systemd/journald.conf.d/solar.conf || bad "volatile journal"
 grep -q '^tmpfs /var/log' /etc/fstab || bad "tmpfs /var/log"
 ok "--harden wrote updates, journal and log settings"
