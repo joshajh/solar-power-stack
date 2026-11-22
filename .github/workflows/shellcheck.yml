@@ -6,7 +6,7 @@ on:
 
 jobs:
   shellcheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       # shellcheck comes preinstalled on GitHub's Ubuntu runners.
@@ -19,7 +19,7 @@ jobs:
           shellcheck $files
 
   oslist:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - name: Test the Imager repository file generator
