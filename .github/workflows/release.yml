@@ -16,7 +16,7 @@ jobs:
 
   publish:
     needs: image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write   # lets the job create the GitHub Release
     env:
