@@ -28,7 +28,7 @@ The command downloads the newest installer from the `main` branch without a chec
 
 The script does this:
 
-1. Updates the package list and installs Caddy and the Termux:API command-line tools with `pkg` (log: `~/solar-pkg.log`).
+1. Updates the package list and installs Caddy and the Termux:API command-line tools with `pkg` (log: `~/solar-pkg.log`). It also tries to install `gum` and `libqrencode` (the Termux package that holds the `qrencode` command) for the guided setup. If that fails, the install carries on and the setup asks plain questions.
 2. Copies the starter site to `~/site` and never overwrites a page you edited.
 3. Writes the Caddyfile (`$PREFIX/etc/caddy/Caddyfile`) for port 8080.
 4. Writes `solar-serve` (`$PREFIX/bin/solar-serve`). It keeps the phone awake with `termux-wake-lock`, starts Caddy, restarts Caddy when it stops, and refreshes the status page every minute.
@@ -38,9 +38,28 @@ The script does this:
 
 You can run the script again. It changes only what differs.
 
+## Finish with the guided setup
+
+The install output ends with:
+
+```
+Run solar-setup to finish. It asks a few questions and shows your address.
+Start it now? [Y/n]
+```
+
+Press Enter to start the guided setup. If you answer `n`, or you run the installer without a terminal, run `solar-setup` later. It asks for the site name, who can open the status page and a first page, walks you through the Android settings below, and ends with your address as a QR code. [docs/setup.md](setup.md) lists every question and what it changes.
+
+![The welcome screen of solar-setup on a phone-sized terminal.](images/setup/termux-welcome.png)
+
+![The Android settings screen of solar-setup: four settings to choose, change and confirm, then Done.](images/setup/termux-android.png)
+
+![The last screen: a QR code with the address of the site under it.](images/setup/termux-done.png)
+
+These screenshots come from a Debian container that pretends to be Termux, drawn at the phone's width of 40 columns. They have not been captured on a phone.
+
 ## Android settings
 
-Do these once. Android otherwise stops Termux in the background.
+Do these once. Android otherwise stops Termux in the background. The guided setup walks you through the same four settings.
 
 1. Open Settings, Apps, Termux, Battery and choose Unrestricted. The name differs between phones.
 2. Do the same for Termux:Boot and Termux:API.
@@ -72,6 +91,7 @@ The install has run on one Android phone (2026-11-23). The installer logic also 
 | Tested phone model and Android version | One Android phone tested on 2026-11-23. Model and Android version not recorded yet. |
 | One pasted command on a fresh Termux gives a server reachable from another device | Passed on one phone, after updating Termux with `apt update && apt full-upgrade -y` (see Troubleshooting). The starter page opened from another device on the same Wi-Fi. |
 | The printed Wi-Fi address is right | Passed on one phone. The script read it from `termux-wifi-connectioninfo` or from `curl`, because Android 11 and newer block `ip` and `ifconfig`. |
+| `pkg install gum libqrencode` works, and the guided setup runs on Termux | Not run. The setup runs in a Debian container that pretends to be Termux (`tests/test-setup.sh`). |
 | Server survives a phone reboot (Termux:Boot) | Not run |
 | Server survives 24 hours with the screen off | Not run |
 | `am start -a android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS` opens the settings list | Not run |

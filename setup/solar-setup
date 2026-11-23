@@ -1,0 +1,590 @@
+#!/usr/bin/env bash
+# solar-setup - a short, guided setup for your Solar server.
+#
+# It asks a few questions, applies the answers and shows the address of your
+# site. Run it again at any time: it changes only what differs.
+#
+# It draws the screens with gum (https://github.com/charmbracelet/gum, MIT).
+# Without gum, without a terminal, or with --plain, it asks plain questions.
+# gum is installed by the installer: a pinned release, checked with SHA-256
+# (see install-gum.sh), in <prefix>/lib/solar/bin/gum on Debian and the Pi, and
+# from the package list on Termux. solar-setup prefers that copy over one on PATH.
+#
+# Every answer maps to a setting the installer already has:
+#   site name      install.sh --name        solar.conf: site_name
+#   hostname       (Debian and Pi only)     solar.conf: hostname
+#   status page    (private or public)      solar.conf: status_public
+#   first page     written into index.html between two marker comments
+#
+# Settings for tests and screenshots:
+#   SOLAR_SETUP_DEVICE=termux|pi|debian   pretend to be that device
+#   SOLAR_SETUP_IP=192.168.1.50           show this address
+#   SOLAR_INSTALLER=FILE                  the installer to call
+#   SOLAR_GUM=FILE                        the gum program to use
+set -u
+
+usage() {
+  cat <<'USAGE'
+Usage: solar-setup [--plain] [--help]
+
+Guided setup for your Solar server.
+
+  --plain   Ask plain questions. No colours, no gum, no QR code.
+  --help    Show this text.
+
+Environment: NO_COLOR=1 turns colours off (the QR code keeps its black and
+white, because a phone cannot scan it otherwise).
+USAGE
+}
+
+PLAIN=no
+for arg in "$@"; do
+  case "$arg" in
+    --plain)   PLAIN=yes ;;
+    --help|-h) usage; exit 0 ;;
+    *)         usage >&2; exit 1 ;;
+  esac
+done
+
+# ---------------------------------------------------------------- 1. Look
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
+# Find gum. Prefer the copy the installer checked, then one on PATH.
+GUM=""
+for g in "${SOLAR_GUM:-}" "$(dirname "$HERE")/lib/solar/bin/gum" "$(type -P gum || true)"; do
+  if [ -n "$g" ] && [ -x "$g" ]; then GUM=$g; break; fi
+done
+
+# Use gum only on a real terminal. Anything else gets plain questions.
+UI=plain
+if [ "$PLAIN" = no ] && [ -t 0 ] && [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
+  if [ -n "$GUM" ]; then
+    UI=gum
+    gum() { "$GUM" "$@"; }       # every gum call below runs the chosen copy
+  else
+    echo "gum is not installed, so solar-setup asks plain questions."
+  fi
+fi
+
+# The QR code needs a terminal to draw on, and the qrencode program.
+SHOW_QR=no
+if [ "$PLAIN" = no ] && [ -t 1 ] && command -v qrencode >/dev/null 2>&1; then SHOW_QR=yes; fi
+
+# Colour: true colour, 256 colours, or none (NO_COLOR and 16-colour terminals).
+COLOR=none
+if [ "$UI" = gum ] && [ -z "${NO_COLOR:-}" ]; then
+  case "${COLORTERM:-}" in
+    truecolor|24bit) COLOR=true ;;
+    *) [ "$(tput colors 2>/dev/null || echo 0)" -ge 256 ] && COLOR=256 ;;
+  esac
+fi
+
+# The screen is two columns narrower than the terminal, up to 64 columns. Some
+# terminals (Termux among them) wrap a line that fills the last column or two.
+# tput comes from ncurses-utils, which a fresh Termux lacks, so ask stty next.
+COLS=$(tput cols 2>/dev/null) || COLS=
+case "$COLS" in ''|*[!0-9]*) COLS=$(stty size 2>/dev/null </dev/tty | cut -d' ' -f2) ;; esac
+case "$COLS" in ''|*[!0-9]*|0) COLS=${COLUMNS:-80} ;; esac
+W=$((COLS - 2))
+[ "$W" -gt 64 ] && W=64
+[ "$W" -lt 20 ] && W=20
+INNER=$((W - 2))                 # a box adds one border column on each side
+
+# The site's sun gradient, as red green blue triplets.
+STOPS=("219 61 35" "253 223 28" "149 214 240" "0 76 148")
+
+# sun_rgb P: set R, G and B for position P (0 to 300) along the gradient.
+sun_rgb() {
+  local p=$1 seg t r1 g1 b1 r2 g2 b2
+  seg=$((p / 100)); [ "$seg" -gt 2 ] && seg=2
+  t=$((p - seg * 100))
+  read -r r1 g1 b1 <<<"${STOPS[$seg]}"
+  read -r r2 g2 b2 <<<"${STOPS[$((seg + 1))]}"
+  R=$((r1 + (r2 - r1) * t / 100)); G=$((g1 + (g2 - g1) * t / 100)); B=$((b1 + (b2 - b1) * t / 100))
+}
+
+# sun_hex P: print the colour at position P as #rrggbb.
+sun_hex() { sun_rgb "$1"; printf '#%02x%02x%02x' "$R" "$G" "$B"; }
+
+# bar: one line of blocks that fades from red to yellow to light blue to blue.
+bar() {
+  local n=$W i
+  case "$COLOR" in
+    true) for ((i = 0; i < n; i++)); do
+            sun_rgb $((i * 300 / (n - 1)))
+            printf '\e[38;2;%d;%d;%dm█' "$R" "$G" "$B"
+          done; printf '\e[0m\n' ;;
+    256)  local c=(166 220 117 25)    # four steps, because 256 colours cannot blend
+          for ((i = 0; i < n; i++)); do printf '\e[38;5;%dm█' "${c[$((i * 4 / n))]}"; done
+          printf '\e[0m\n' ;;
+    *)    printf '%*s\n' "$n" '' | tr ' ' '=' ;;
+  esac
+}
+
+# STEP is the screen on show. STEPS is how many screens this device shows.
+# Both modes count the same way: one step for each screen.
+STEP=0; STEPS=5
+
+# accent: print the colour for this step (nothing when colour is off).
+accent() {
+  case "$COLOR" in
+    true|256) sun_hex $(((STEP > 0 ? STEP - 1 : 0) * 240 / STEPS)) ;;   # stop short of the dark blue
+  esac
+}
+
+# box TEXT...: print the text in a bordered box, wrapped to the screen.
+box() {
+  if [ "$UI" = gum ]; then
+    local c; c=$(accent)
+    gum style --border rounded ${c:+--border-foreground "$c"} --padding "0 1" --width "$INNER" "$@"
+  else
+    printf '%s\n' "$@"
+  fi
+}
+
+# bold TEXT: print one bold line, in the accent colour.
+bold() {
+  if [ "$UI" = gum ]; then
+    local c; c=$(accent)
+    gum style --bold ${c:+--foreground "$c"} "$@"
+  else
+    printf '%s\n' "$@"
+  fi
+}
+
+# screen TITLE [same]: start a new screen with a rule, the title and the step
+# number. Pass "same" to draw the current screen again without counting it twice.
+screen() {
+  local title=$1
+  [ "${2:-}" = same ] || STEP=$((STEP + 1))
+  if [ "$UI" = gum ]; then
+    clear
+    bar
+    bold "$title  ($STEP of $STEPS)"
+  else
+    printf '\n== %s (step %d of %d) ==\n' "$title" "$STEP" "$STEPS"
+  fi
+}
+
+# ------------------------------------------------------------ 2. Questions
+# Each question sets REPLY. Esc or Ctrl-C leaves without changing anything.
+cancel() { echo; echo "Stopped. Nothing changed. Run solar-setup to start again."; exit 1; }
+trap cancel INT
+
+# ask_text LABEL DEFAULT [PLACEHOLDER]
+ask_text() {
+  if [ "$UI" = gum ]; then
+    local c; c=$(accent)
+    REPLY=$(gum input --prompt "$1: " --value "$2" --placeholder "${3:-}" --width "$INNER" \
+            --char-limit 300 ${c:+--cursor.foreground "$c" --prompt.foreground "$c"}) || cancel
+    echo "$1: $REPLY"      # gum erases the question, so print the answer
+  else
+    printf '%s%s: ' "$1" "${2:+ [$2]}"
+    IFS= read -r REPLY || REPLY=""
+    [ -t 0 ] || printf '%s\n' "$REPLY"     # echo piped answers, so a transcript reads well
+    REPLY=${REPLY:-$2}
+  fi
+}
+
+# ask_paragraph LABEL PLACEHOLDER: a text box with several lines in gum, so a
+# long paragraph wraps instead of running off the screen. Enter finishes and
+# Ctrl-J starts a new line. Plain mode reads one line.
+ask_paragraph() {
+  if [ "$UI" = gum ]; then
+    local c; c=$(accent)
+    echo "$1 (press Enter when done):"
+    REPLY=$(gum write --placeholder "${2:-}" --width "$INNER" --height 6 --char-limit 1000 \
+            --no-show-help --show-line-numbers=false ${c:+--cursor.foreground "$c"}) || cancel
+  else
+    ask_text "$1" ""
+  fi
+}
+
+# ask_choice HEADER OPTION...: the first option is the default,
+# unless CHOICE_DEFAULT names another option.
+ask_choice() {
+  local header=$1 n i; shift
+  if [ "$UI" = gum ]; then
+    local c; c=$(accent)
+    REPLY=$(gum choose --header "$header" --cursor "> " --height 8 \
+            ${CHOICE_DEFAULT:+--selected "$CHOICE_DEFAULT"} \
+            ${c:+--cursor.foreground "$c" --header.foreground "$c" --selected.foreground "$c"} "$@") || cancel
+    [ "$QUIET" = yes ] || echo "$header $REPLY"
+  else
+    echo "$header"
+    i=1; for n in "$@"; do echo "  $i. $n"; i=$((i + 1)); done
+    local d=1
+    i=1; for n in "$@"; do [ "$n" != "${CHOICE_DEFAULT:-}" ] || d=$i; i=$((i + 1)); done
+    printf 'Number [%d]: ' "$d"
+    IFS= read -r n || n=""
+    [ -t 0 ] || printf '%s\n' "$n"
+    case "$n" in ''|*[!0-9]*) n=$d ;; esac
+    [ "$n" -ge 1 ] && [ "$n" -le $# ] || n=$d
+    REPLY=${!n}
+  fi
+}
+
+# ask_yes QUESTION: succeed when the answer is yes.
+ask_yes() {
+  if [ "$UI" = gum ]; then
+    local c; c=$(accent)
+    local rc=0
+    gum confirm ${c:+--prompt.foreground "$c" --selected.background "$c" --selected.foreground "#000000"} "$1" || rc=$?
+    [ "$rc" -le 1 ] || cancel      # 0 is yes, 1 is no, anything else is Esc or Ctrl-C
+    return "$rc"
+  else
+    printf '%s [y/N]: ' "$1"
+    IFS= read -r REPLY || REPLY=""
+    [ -t 0 ] || printf '%s\n' "$REPLY"
+    case "$REPLY" in y|Y|yes) return 0 ;; *) return 1 ;; esac
+  fi
+}
+
+# wait_enter [TEXT]: pause until the user presses Enter.
+wait_enter() {
+  printf '%s ' "${1:-Press Enter to continue.}"
+  IFS= read -r _ || true
+  [ -t 0 ] || echo
+}
+
+# ------------------------------------------------------ 3. This device
+detect_device() {
+  if [ -n "${SOLAR_SETUP_DEVICE:-}" ]; then echo "$SOLAR_SETUP_DEVICE"; return; fi
+  # The installer uses the same test for Termux.
+  case "${PREFIX:-}" in *com.termux*) echo termux; return ;; esac
+  if grep -q 'Raspberry Pi' /sys/firmware/devicetree/base/model 2>/dev/null; then echo pi; return; fi
+  echo debian
+}
+
+DEVICE=$(detect_device)
+# shellcheck disable=SC1091
+case "$DEVICE" in
+  termux) DEVICE_NAME="Android phone (Termux)" ;;
+  pi)     DEVICE_NAME="Raspberry Pi" ;;
+  *)      DEVICE_NAME="Debian $(. /etc/os-release 2>/dev/null && echo "${VERSION_ID:-}")" ;;
+esac
+
+# Count the screens this device shows: welcome, name, status page, first page
+# and done. Termux adds the Android settings. A QR code adds one more screen.
+STEPS=5
+[ "$DEVICE" != termux ] || STEPS=$((STEPS + 1))
+[ "$SHOW_QR" != yes ] || STEPS=$((STEPS + 1))
+
+if [ "$DEVICE" = termux ]; then
+  CONF_DIR="${PREFIX:-/data/data/com.termux/files/usr}/etc/solar"
+  CADDYFILE="${PREFIX:-/data/data/com.termux/files/usr}/etc/caddy/Caddyfile"
+  SITE_DIR="$HOME/site"; PORT=8080
+else
+  CONF_DIR=/etc/solar; CADDYFILE=/etc/caddy/Caddyfile
+  SITE_DIR=/srv/site; PORT=80
+fi
+CONF="$CONF_DIR/solar.conf"
+
+# Read the site folder and port from the Caddyfile the installer wrote.
+if [ -f "$CADDYFILE" ]; then
+  p=$(sed -n 's/^:\([0-9][0-9]*\).*/\1/p' "$CADDYFILE" | head -n 1); [ -z "$p" ] || PORT=$p
+  d=$(sed -n 's/^[[:space:]]*root \* "\(.*\)"$/\1/p' "$CADDYFILE" | head -n 1); [ -z "$d" ] || SITE_DIR=$d
+fi
+
+# conf_get KEY: print the value of KEY in solar.conf, or nothing.
+conf_get() {
+  [ -f "$CONF" ] || return 0
+  grep -E "^$1=" "$CONF" | tail -n 1 | cut -d= -f2- || true
+}
+
+# True for a dotted IPv4 address that is not empty, loopback or unspecified.
+# install.sh has the same test.
+usable_address() {
+  [[ "${1:-}" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && [ "$1" != 0.0.0.0 ] && [[ "$1" != 127.* ]]
+}
+
+# The address of this device: its IP address and the port.
+address() {
+  local ip suffix=""
+  [ "$PORT" = 80 ] || suffix=":$PORT"
+  if [ "$DEVICE" = termux ]; then
+    # Android 11 and newer stop apps from reading the Wi-Fi interface with ip or
+    # ifconfig. Try three ways, and keep the first real address.
+    ip=$( { ip -4 addr show wlan0 2>/dev/null || ifconfig wlan0 2>/dev/null; } | grep -oE 'inet [0-9.]+' | head -n 1 | cut -d' ' -f2) || true
+    usable_address "$ip" || ip=$(timeout 5 termux-wifi-connectioninfo 2>/dev/null | grep -oE '"ip": *"[0-9.]+"' | grep -oE '[0-9]+(\.[0-9]+){3}' | head -n 1) || true
+    # curl reports the local address of its own connection, which needs no special permission.
+    usable_address "$ip" || ip=$(curl -4 -s -o /dev/null -w '%{local_ip}' --max-time 8 "${SOLAR_ADDRESS_PROBE_URL:-https://github.com}" 2>/dev/null) || true
+  else
+    ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+  fi
+  ip=${SOLAR_SETUP_IP:-$ip}       # lets the screenshots show a home-network address
+  usable_address "$ip" || ip="<device address>"
+  echo "http://$ip$suffix"
+}
+
+# --------------------------------------------------- 4. Answers so far
+CHOICE_DEFAULT=""
+QUIET=no     # yes: ask_choice does not print the answer again
+SITE_NAME=""; NEW_HOSTNAME=""; STATUS_PUBLIC=false; PAGE_TITLE=""; PAGE_TEXT=""
+HOST_NOW=$(hostname 2>/dev/null || echo solar)
+
+# html_escape TEXT: make text safe to put inside a page.
+# The replacements are quoted, because bash treats a bare & there as "the match".
+html_escape() { local t=${1//&/"&amp;"}; t=${t//</"&lt;"}; echo "${t//>/"&gt;"}"; }
+
+# paragraphs_html TEXT: one <p> for each block of text. A blank line starts a
+# new paragraph, and other line breaks become spaces.
+paragraphs_html() {
+  local line cur="" out=""
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ -z "${line//[[:space:]]/}" ]; then
+      [ -z "$cur" ] || out+="<p>$(html_escape "$cur")</p>"$'\n'
+      cur=""
+    else
+      line=${line#"${line%%[![:space:]]*}"}; line=${line%"${line##*[![:space:]]}"}   # trim
+      cur=${cur:+$cur }$line
+    fi
+  done <<<"$1"
+  [ -z "$cur" ] || out+="<p>$(html_escape "$cur")</p>"$'\n'
+  printf '%s' "${out%$'\n'}"
+}
+
+# ------------------------------------------------------------- 5. Screens
+screen_welcome() {
+  STEP=1
+  if [ "$UI" = gum ]; then
+    clear; bar
+    local c; c=$(accent)
+    gum style --bold --align center --width "$W" ${c:+--foreground "#fddf1c"} "SOLAR POWER" "setup  (1 of $STEPS)"
+    bar
+  else
+    printf '== SOLAR POWER setup (step 1 of %d) ==\n' "$STEPS"
+  fi
+  echo
+  local state="not running"
+  curl -fsS --max-time 2 "http://127.0.0.1:$PORT" >/dev/null 2>&1 && state="running"
+  box "Device:  $DEVICE_NAME" "Server:  $state" "Address: $ADDRESS"
+  echo
+  echo "This takes about two minutes."
+  echo "Press Ctrl-C to stop at any time."
+  echo
+  wait_enter
+}
+
+screen_name() {
+  screen "Name your site"
+  local old; old=$(conf_get site_name)
+  [ -n "$old" ] || old=$(sed -n 's|.*<h1>\(.*\)</h1>.*|\1|p' "$SITE_DIR/index.html" 2>/dev/null | head -n 1)
+  box "The name appears at the top of your home page."
+  ask_text "Site name" "${old:-My Solar Server}"
+  SITE_NAME=$REPLY
+  if [ "$DEVICE" != termux ]; then
+    echo
+    box "Other devices find you at <hostname>.local. Use letters, digits and hyphens."
+    local h; h=$(conf_get hostname); h=${h:-$HOST_NOW}
+    while :; do
+      ask_text "Hostname" "$h"
+      case "$REPLY" in
+        ''|-*|*[!A-Za-z0-9-]*) echo "Use only letters, digits and hyphens." ;;
+        *) break ;;
+      esac
+    done
+    NEW_HOSTNAME=$REPLY
+  fi
+}
+
+screen_status() {
+  screen "Status page"
+  box "Choose who can open the status page at /status: only your home network, or anyone who has the address."
+  local now; now=$(conf_get status_public)
+  [ "$now" != true ] || CHOICE_DEFAULT="Public: anyone"
+  ask_choice "Who can open it?" "Private: home network only" "Public: anyone"
+  CHOICE_DEFAULT=""
+  case "$REPLY" in Public*) STATUS_PUBLIC=true ;; *) STATUS_PUBLIC=false ;; esac
+}
+
+screen_page() {
+  screen "Your first page"
+  box "Write a title and a paragraph. Solar adds them to your home page. Leave both empty to skip."
+  ask_text "Title" "" "Hello from my phone"
+  PAGE_TITLE=$REPLY
+  ask_paragraph "Paragraph" "A few sentences about your site"
+  PAGE_TEXT=$REPLY
+}
+
+# open_settings ACTION: open an Android settings screen from Termux.
+open_settings() {
+  if command -v am >/dev/null 2>&1; then
+    am start -a "$1" >/dev/null 2>&1 || echo "Could not open it. Open Settings by hand." | fold -s -w "$INNER"
+  else
+    echo "This device cannot open Settings from here. Open Settings by hand." | fold -s -w "$INNER"
+  fi
+}
+
+# The text at the top of the Android settings screen. Edit the copy here only.
+ANDROID_INTRO="Android can stop apps that run in the background. Choose a setting, change it on your phone, then confirm to tick its box. Choose Done when you finish."
+
+screen_android() {
+  QUIET=yes
+  # label | explanation | Android action (empty when no screen exists)
+  local labels=("Battery: Unrestricted" "Child processes: off" "Wi-Fi: stay on" "Charger: plug in")
+  local notes=("Set Termux, Termux:Boot and Termux:API to Unrestricted."
+               "Android 12 or newer: in Developer options, switch on Disable child process restrictions."
+               "Set Keep Wi-Fi on during sleep to Always, if your phone has it."
+               "Leave the phone on its charger.")
+  local actions=(android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS
+                 android.settings.APPLICATION_DEVELOPMENT_SETTINGS
+                 android.settings.WIFI_SETTINGS "")
+  local ticked=(no no no no) i pick again=""
+  while :; do
+    screen "Android settings" $again
+    again=same
+    box "$ANDROID_INTRO"
+    local items=()
+    for i in 0 1 2 3; do
+      [ "${ticked[$i]}" = yes ] && items+=("[x] ${labels[$i]}") || items+=("[ ] ${labels[$i]}")
+    done
+    ask_choice "Choose a setting to change" "${items[@]}" "Done"
+    [ "$REPLY" != Done ] || break
+    for i in 0 1 2 3; do case "$REPLY" in *"${labels[$i]}") pick=$i ;; esac; done
+    echo; echo "${notes[$pick]}" | fold -s -w "$INNER"
+    [ -z "${actions[$pick]}" ] || open_settings "${actions[$pick]}"
+    ask_yes "Did you change it?" && ticked[pick]=yes
+  done
+  QUIET=no
+}
+
+# ----------------------------------------------------------- 6. Apply
+# The installer is the one place that knows how to write the Caddyfile.
+find_installer() {
+  local f
+  for f in "${SOLAR_INSTALLER:-}" "$HERE/../install/install.sh" "$(dirname "$HERE")/lib/solar/install/install.sh"; do
+    [ -n "$f" ] && [ -f "$f" ] && { echo "$f"; return; }
+  done
+}
+
+# Write solar.conf: keep the keys we do not ask about, set the three we do.
+write_conf() {
+  {
+    grep -vE '^(hostname|site_name|status_public)=' "$CONF" 2>/dev/null || true
+    echo "site_name=$SITE_NAME"
+    [ -z "$NEW_HOSTNAME" ] || echo "hostname=$NEW_HOSTNAME"
+    echo "status_public=$STATUS_PUBLIC"
+  } >"$1"
+}
+
+# Change the name on the home page, but only where the installer wrote it.
+rename_site() {
+  local f="$SITE_DIR/index.html" old new page
+  [ -f "$f" ] || return 0
+  old=$(sed -n 's|.*<h1>\(.*\)</h1>.*|\1|p' "$f" | head -n 1)
+  new=$(html_escape "$SITE_NAME")
+  [ -n "$old" ] && [ "$old" != "$new" ] || return 0
+  page=$(<"$f")
+  page=${page//"<title>$old</title>"/"<title>$new</title>"}
+  page=${page//"<h1>$old</h1>"/"<h1>$new</h1>"}
+  printf '%s\n' "$page" >"$f"
+}
+
+# Put the first page on the home page, between two marker comments.
+# Running again replaces that block and nothing else.
+write_first_page() {
+  local f="$SITE_DIR/index.html" block page begin='<!-- solar-setup:begin -->' end='<!-- solar-setup:end -->'
+  [ -n "$PAGE_TITLE$PAGE_TEXT" ] || return 0
+  if ! grep -q '</body>' "$f" 2>/dev/null; then
+    echo "Skipped your first page: $f has no </body> line."; return 0
+  fi
+  block="$begin"
+  [ -z "$PAGE_TITLE" ] || block+=$'\n'"<h2>$(html_escape "$PAGE_TITLE")</h2>"
+  [ -z "$PAGE_TEXT" ] || block+=$'\n'"$(paragraphs_html "$PAGE_TEXT")"
+  block+=$'\n'"$end"
+  page=$(<"$f")
+  if [[ $page == *"$begin"* && $page != *"$end"* ]]; then
+    echo "Skipped your first page: the solar-setup block in $f has no end marker."; return 0
+  fi
+  if [[ $page == *"$begin"* ]]; then
+    local head=${page%%"$begin"*}
+    page=${head%$'\n'}${page#*"$end"}      # drop the old block and its line break
+  fi
+  page=${page%%'</body>'*}$block$'\n''</body>'${page#*'</body>'}
+  printf '%s\n' "$page" >"$f"
+  chmod a+r "$f"
+}
+
+apply() {
+  local tmp inst log
+  log=$(mktemp "${TMPDIR:-/tmp}/solar-setup.XXXXXX.log")
+  [ -d "$SITE_DIR" ] || { echo "Cannot find your site at $SITE_DIR. Run the installer first."; exit 1; }
+  echo "Applying your settings..."
+  trap - INT        # from here on, Ctrl-C ends the script without the "Nothing changed" message
+  tmp=$(mktemp); write_conf "$tmp"
+  inst=$(find_installer)
+  if [ -z "$inst" ]; then
+    echo "Cannot find install.sh. Set SOLAR_INSTALLER to its path."; rm -f "$tmp"; exit 1
+  elif ! bash "$inst" --apply --conf "$tmp" --site-dir "$SITE_DIR" --port "$PORT" >"$log" 2>&1; then
+    echo "The installer failed. The last lines of $log:"; tail -n 5 "$log"; rm -f "$tmp"; exit 1
+  fi
+  rm -f "$tmp" "$log"
+  rename_site
+  write_first_page
+}
+
+# qr_rows ADDRESS: how many terminal rows the QR code needs, quiet zone included.
+qr_rows() { qrencode -t UTF8 -m 2 -l L "$1" | wc -l; }
+
+screen_done() {
+  screen "Done"
+  local url=$ADDRESS
+  local page="none"; [ -z "$PAGE_TITLE" ] || page="$PAGE_TITLE"
+  local status=private; [ "$STATUS_PUBLIC" != true ] || status=public
+  local lines=("Site:    $SITE_NAME" "Status:  $status" "Page:    $page" "Address: $url")
+  [ "$DEVICE" = termux ] || lines+=("Or:      http://$(hostname).local")
+  box "${lines[@]}"
+  echo
+  if [ "$SHOW_QR" = yes ]; then
+    wait_enter "Press Enter to show the QR code."
+  else
+    echo "Open the address in a browser on a device on the same network."
+    echo "Next: read the guide at solarpower.possibleworlds.space"
+  fi
+}
+
+# The QR code gets its own screen: with the summary above it, a 24-row terminal
+# is too short. Half blocks make the code compact, and a margin of 2 modules
+# keeps the white border that phones need to find the code.
+screen_qr() {
+  screen "Open your site"
+  local url=$ADDRESS need rows
+  need=$(( $(qr_rows "$url") + 5 ))      # rule, title, address, two lines of text, prompt
+  rows=$(tput lines 2>/dev/null || stty size 2>/dev/null </dev/tty | cut -d' ' -f1)
+  rows=${rows:-24}
+  while [ "$rows" -lt "$need" ]; do
+    echo "This window has $rows rows and the QR code needs $need."
+    echo "Make the window taller, then press Enter. Type s to skip."
+    IFS= read -r REPLY || REPLY=s
+    [ "$REPLY" != s ] || { echo "$url"; return; }
+    rows=$(tput lines 2>/dev/null || stty size 2>/dev/null </dev/tty | cut -d' ' -f1)
+    rows=${rows:-24}
+    screen "Open your site" same
+  done
+  # ANSIUTF8 sets black on white itself, so the code scans on any terminal theme.
+  qrencode -t ANSIUTF8 -m 2 -l L "$url"
+  bold "$url"
+  echo "Next: read the guide at"
+  echo "solarpower.possibleworlds.space"
+}
+
+# -------------------------------------------------------------- 7. Run
+# Debian and the Pi write to /etc and /srv, so they need root. Termux does not.
+if [ "$DEVICE" != termux ] && [ "$(id -u)" -ne 0 ]; then
+  echo "Run this as root: sudo solar-setup"; exit 1
+fi
+
+# Look the address up once: on Termux it can take a few seconds.
+ADDRESS=$(address)
+
+screen_welcome
+screen_name
+screen_status
+screen_page
+[ "$DEVICE" != termux ] || screen_android
+# Apply before the last screen, so the summary shows the real result.
+if [ "$UI" = gum ]; then clear; fi
+apply
+screen_done
+[ "$SHOW_QR" != yes ] || screen_qr

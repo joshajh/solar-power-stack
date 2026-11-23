@@ -37,6 +37,10 @@ cd /work
 out=$(bash install/install.sh 2>&1) || { echo "$out"; bad "installer failed"; }
 curl -fsS localhost:8080 | grep -q "My Solar Server" || bad "starter page on 8080"
 ok "one command serves the starter page on port 8080"
+grep -q "pkg install -y libqrencode" /tmp/calls || bad "the installer must install libqrencode with pkg"
+if grep -E "^pkg install.* qrencode( |$)" /tmp/calls; then bad "Termux has no package called qrencode"; fi
+grep -q "pkg install -y ncurses-utils" /tmp/calls || bad "the installer must install ncurses-utils (tput)"
+ok "Termux installs gum and libqrencode, and never asks for a package called qrencode"
 echo "$out" | grep -q 'http://<phone address>:8080' || bad "no address found: the script prints the placeholder"
 ok "with no address available, the script prints the placeholder and where to look"
 printf '#!/bin/sh\necho "{ \\"ip\\": \\"192.168.1.77\\" }"\n' > "$PREFIX/bin/termux-wifi-connectioninfo"; chmod +x "$PREFIX/bin/termux-wifi-connectioninfo"
@@ -79,6 +83,17 @@ printf '#!/bin/sh\necho "{\\"percentage\\": 55, \\"status\\": \\"DISCHARGING\\",
 SOLAR_CONF=/none "$PREFIX/bin/solar-status" "$HOME/site"
 grep -q '"percentage": 55' "$HOME/site/status.json" || bad "battery"
 ok "battery fields appear when Termux:API answers"
+
+# --apply (what solar-setup calls) writes the settings and installs no packages.
+: > /tmp/calls
+printf 'site_name=Applied\nstatus_public=true\n' > /tmp/apply.conf
+out=$(bash install/install.sh --apply --conf /tmp/apply.conf 2>&1) || { echo "$out"; bad "--apply failed"; }
+grep -q '^pkg ' /tmp/calls && bad "--apply ran pkg"
+echo "$out" | grep -q 'Do this once' && bad "--apply printed the Android hints"
+grep -qx 'site_name=Applied' "$PREFIX/etc/solar/solar.conf" || bad "--apply did not save solar.conf"
+grep -q 'status_outside' "$PREFIX/etc/caddy/Caddyfile" && bad "--apply kept the private status rule"
+curl -fsS localhost:8080 >/dev/null || bad "server down after --apply"
+ok "--apply saves solar.conf, rewrites the Caddyfile, installs no packages and prints no hints"
 
 # Piped install: no folder next to the script, so it downloads the starter files.
 pkill -f 'caddy run' 2>/dev/null || caddy stop >/dev/null 2>&1 || true
