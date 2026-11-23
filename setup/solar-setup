@@ -222,7 +222,10 @@ ask_choice() {
 ask_yes() {
   if [ "$UI" = gum ]; then
     local c; c=$(accent)
-    gum confirm ${c:+--prompt.foreground "$c" --selected.background "$c" --selected.foreground "#000000"} "$1"
+    local rc=0
+    gum confirm ${c:+--prompt.foreground "$c" --selected.background "$c" --selected.foreground "#000000"} "$1" || rc=$?
+    [ "$rc" -le 1 ] || cancel      # 0 is yes, 1 is no, anything else is Esc or Ctrl-C
+    return "$rc"
   else
     printf '%s [y/N]: ' "$1"
     IFS= read -r REPLY || REPLY=""
@@ -349,7 +352,7 @@ screen_welcome() {
   echo
   local state="not running"
   curl -fsS --max-time 2 "http://127.0.0.1:$PORT" >/dev/null 2>&1 && state="running"
-  box "Device:  $DEVICE_NAME" "Server:  $state" "Address: $(address)"
+  box "Device:  $DEVICE_NAME" "Server:  $state" "Address: $ADDRESS"
   echo
   echo "This takes about two minutes."
   echo "Press Ctrl-C to stop at any time."
@@ -482,6 +485,9 @@ write_first_page() {
   [ -z "$PAGE_TEXT" ] || block+=$'\n'"$(paragraphs_html "$PAGE_TEXT")"
   block+=$'\n'"$end"
   page=$(<"$f")
+  if [[ $page == *"$begin"* && $page != *"$end"* ]]; then
+    echo "Skipped your first page: the solar-setup block in $f has no end marker."; return 0
+  fi
   if [[ $page == *"$begin"* ]]; then
     local head=${page%%"$begin"*}
     page=${head%$'\n'}${page#*"$end"}      # drop the old block and its line break
@@ -492,9 +498,11 @@ write_first_page() {
 }
 
 apply() {
-  local tmp inst log=${TMPDIR:-/tmp}/solar-setup.log
+  local tmp inst log
+  log=$(mktemp "${TMPDIR:-/tmp}/solar-setup.XXXXXX.log")
   [ -d "$SITE_DIR" ] || { echo "Cannot find your site at $SITE_DIR. Run the installer first."; exit 1; }
   echo "Applying your settings..."
+  trap - INT        # from here on, Ctrl-C ends the script without the "Nothing changed" message
   tmp=$(mktemp); write_conf "$tmp"
   inst=$(find_installer)
   if [ -z "$inst" ]; then
@@ -502,7 +510,7 @@ apply() {
   elif ! bash "$inst" --apply --conf "$tmp" --site-dir "$SITE_DIR" --port "$PORT" >"$log" 2>&1; then
     echo "The installer failed. The last lines of $log:"; tail -n 5 "$log"; rm -f "$tmp"; exit 1
   fi
-  rm -f "$tmp"
+  rm -f "$tmp" "$log"
   rename_site
   write_first_page
 }
@@ -512,7 +520,7 @@ qr_rows() { qrencode -t UTF8 -m 2 -l L "$1" | wc -l; }
 
 screen_done() {
   screen "Done"
-  local url; url=$(address)
+  local url=$ADDRESS
   local page="none"; [ -z "$PAGE_TITLE" ] || page="$PAGE_TITLE"
   local status=private; [ "$STATUS_PUBLIC" != true ] || status=public
   local lines=("Site:    $SITE_NAME" "Status:  $status" "Page:    $page" "Address: $url")
@@ -532,7 +540,7 @@ screen_done() {
 # keeps the white border that phones need to find the code.
 screen_qr() {
   screen "Open your site"
-  local url need rows; url=$(address)
+  local url=$ADDRESS need rows
   need=$(( $(qr_rows "$url") + 5 ))      # rule, title, address, two lines of text, prompt
   rows=$(tput lines 2>/dev/null || echo 24)
   while [ "$rows" -lt "$need" ]; do
@@ -555,6 +563,9 @@ screen_qr() {
 if [ "$DEVICE" != termux ] && [ "$(id -u)" -ne 0 ]; then
   echo "Run this as root: sudo solar-setup"; exit 1
 fi
+
+# Look the address up once: on Termux it can take a few seconds.
+ADDRESS=$(address)
 
 screen_welcome
 screen_name

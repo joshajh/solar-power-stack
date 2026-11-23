@@ -104,7 +104,7 @@ mv "$GUM.off" "$GUM"
 ok "without gum, solar-setup says so and asks plain questions"
 
 # ---- 8. Hand-over from the installer.
-# 8a. No /dev/tty (setsid drops the controlling terminal): print the hint, do not prompt.
+# 8a. No /dev/tty (a docker run without -t has none; setsid makes sure): print the hint, do not prompt.
 out=$(setsid -w bash install/install.sh </dev/null 2>&1) || { echo "$out"; bad "installer failed without a tty"; }
 echo "$out" | grep -q 'Run solar-setup to finish' || bad "no hint without a tty"
 echo "$out" | grep -q 'Start it now' && bad "prompted without a tty"
@@ -131,18 +131,18 @@ tmux kill-server
 ok "--no-setup never prompts"
 
 # ---- 9. gum run in tmux at the phone's size, 40 by 24.
+# Each step waits for gum's own prompt before it sends keys: gum draws its prompt
+# after solar-setup prints the title, and keys that arrive earlier are lost.
 rm -rf /srv/site /etc/solar; bash install/install.sh --no-setup >/dev/null 2>&1
 newsession g 40 "solar-setup"
 wait_for g "(1 of 6)";                         screen g > /tmp/s1.txt; press Enter
-wait_for g "Name your site  (2 of 6)";         press C-u "Sunny Garden" Enter
-wait_for g "Hostname";                         press C-u "garden" Enter
-wait_for g "Status page  (3 of 6)";            press Enter
-wait_for g "Your first page  (4 of 6)";        press "Hello from my server" Enter
-wait_for g "press Enter when done"
+wait_for g "Site name:";                       press C-u "Sunny Garden" Enter
+wait_for g "Hostname:";                        press C-u "garden" Enter
+wait_for g "Who can open it?";                 screen g | grep -q 'Status page  (3 of 6)' || bad "status screen number"; press Enter
+wait_for g "Title:";                           screen g | grep -q 'Your first page  (4 of 6)' || bad "page screen number"; press "Hello from my server" Enter
+wait_for g "A few sentences about your site"
 press "$LONG"
-sleep 1; screen g > /tmp/s4.txt
-# A long paragraph wraps inside the box: no line is cut at the screen edge.
-grep -q 'word060' /tmp/s4.txt || { cat /tmp/s4.txt; bad "the end of the long paragraph is not visible on screen"; }
+wait_for g "word060"; screen g > /tmp/s4.txt   # the end of the text shows: it wraps inside the box
 press Enter
 wait_for g "Done  (5 of 6)";                   screen g > /tmp/s5.txt
 grep -q 'Sunny Garden' /tmp/s5.txt || bad "done screen: site name"
@@ -187,5 +187,29 @@ ok "the QR code is complete with its white border, and decodes to $url"
 head -n 3 /tmp/s6.txt | grep -q 'Open your site' || bad "the title scrolled off"
 ok "the QR screen fits in 24 rows with the title in view"
 tmux kill-server
+
+# ---- 10. The same run for Termux: no hostname question, plus the Android settings.
+# This is a Debian container that pretends to be Termux (SOLAR_SETUP_DEVICE) and has a stand-in "am".
+tmux kill-server 2>/dev/null || true
+rm -rf /srv/site /etc/solar /root/site; bash install/install.sh --no-setup >/dev/null 2>&1
+ln -sfn /srv/site /root/site                 # Termux keeps the site in ~/site
+printf '#!/bin/sh\nexit 0\n' > /usr/local/bin/am; chmod +x /usr/local/bin/am
+newsession g 40 "SOLAR_SETUP_IP=192.168.1.50 SOLAR_SETUP_DEVICE=termux solar-setup"
+wait_for g "(1 of 7)";                         press Enter
+wait_for g "Site name:";                       press C-u "Phone Site" Enter
+wait_for g "Who can open it?";                 screen g | grep -q 'Status page  (3 of 7)' || bad "termux: status screen number"; press Enter
+wait_for g "Title:";                           press Enter
+wait_for g "A few sentences about your site";  press Enter
+wait_for g "Pick one";                         screen g | grep -q 'Android settings  (5 of 7)' || bad "termux: android screen number"; press Enter
+wait_for g "Did you do this?";                 press y
+wait_for g "[x] Battery: Unrestricted";        screen g | grep -q 'Android settings  (5 of 7)' || bad "termux: redrawn screen was counted twice"
+press Down Down Down Down Enter
+wait_for g "Done  (6 of 7)";                   press Enter
+wait_for g "Open your site  (7 of 7)";         sleep 1
+screen g | grep -q 'http://192.168.1.50:8080' || bad "termux: address on the QR screen"
+grep -qx 'site_name=Phone Site' /etc/solar/solar.conf || bad "termux: site_name"
+grep -q 'hostname=' /etc/solar/solar.conf && bad "termux: asked for a hostname"
+ok "Termux run: seven screens numbered 1 to 7, the Android screen counts once and says Pick one"
+tmux kill-server 2>/dev/null || true
 
 echo "ALL PASSED"

@@ -336,17 +336,19 @@ install_site() {
 install_setup() {
   [ "$APPLY" = no ] || return 0
   [ -f "$REPO_DIR/setup/solar-setup" ] || return 0
-  install -m 755 "$REPO_DIR/setup/solar-setup" "$BIN_DIR/solar-setup"
   # solar-setup calls this installer again to apply your answers. Keep a copy
   # with the starter files it needs, so that run works offline.
   local lib; lib="$(dirname "$BIN_DIR")/lib/solar"
-  mkdir -p "$lib"
-  cp -r "$REPO_DIR/install" "$REPO_DIR/setup" "$REPO_DIR/site-template" "$REPO_DIR/status" "$lib"/
+  { install -m 755 "$REPO_DIR/setup/solar-setup" "$BIN_DIR/solar-setup" \
+    && mkdir -p "$lib" \
+    && cp -r "$REPO_DIR/install" "$REPO_DIR/setup" "$REPO_DIR/site-template" "$REPO_DIR/status" "$lib"/; } \
+    || { say "Could not install solar-setup. The server itself is installed."; return 0; }
   if [ "$OS" = termux ]; then
     pkg install -y gum qrencode >>"$HOME/solar-pkg.log" 2>&1 \
       || say "Could not install gum or qrencode. solar-setup still works: it asks plain questions and skips the QR code."
   else
-    apt-get install -y -qq qrencode >/dev/null 2>&1 \
+    # A box that already ran Caddy may have an old package list, so refresh it.
+    { apt-get update -qq && apt-get install -y -qq qrencode; } >/dev/null 2>&1 \
       || say "Could not install qrencode. solar-setup shows no QR code."
     # gum is not in Debian 12. install-gum.sh downloads a pinned release and checks its SHA-256.
     bash "$REPO_DIR/setup/install-gum.sh" "$lib/bin" \

@@ -45,14 +45,14 @@ The first done screen lists your answers and the address. Press Enter, and a sec
 
 ## Run it again
 
-Run `solar-setup` again. Each screen starts from your current answers. Press Enter on every screen to change nothing: a second run with the same answers leaves every file as it was.
+Run `solar-setup` again. The name, hostname and status page start from your current answers. The first page starts empty: leave it empty to keep the block you wrote before, or write a new one to replace it. Press Enter on every screen to change nothing: a second run with the same answers leaves every file as it was.
 
 ## Plain mode and colour
 
 - `solar-setup --plain` asks plain questions: no gum, no colour, no QR code. Answer by typing, or pipe the answers in, one line per question.
 - Plain mode also starts by itself when stdin or stdout is not a terminal, when `TERM` is `dumb`, and when gum is missing.
 - `NO_COLOR=1` turns colours off. The QR code stays black and white, because a phone cannot scan it otherwise.
-- A 16-colour terminal gets plain borders.
+- A terminal with fewer than 256 colours gets no colours: the rule is a line of `=` characters.
 
 ## Tools it uses
 
@@ -75,7 +75,7 @@ A failure to install either tool never fails the install.
 
 - **`Run this as root: sudo solar-setup`.** On Debian and the Pi, run it with `sudo`.
 - **`Cannot find your site at ...`.** Run the installer first. It creates the site folder.
-- **`The installer failed.`** The message shows the last lines of `/tmp/solar-setup.log`. With the Pi's read-only root on, turn it off first (see [hardening.md](hardening.md)).
+- **`The installer failed.`** The message shows the last lines of the installer log, in a file named `/tmp/solar-setup.XXXXXX.log`. With the Pi's read-only root on, turn it off first (see [hardening.md](hardening.md)).
 - **`gum is not installed, so solar-setup asks plain questions.`** gum did not install, for example without internet access. Run the installer again, or use the plain questions: they change the same things.
 - **The QR code is missing.** `qrencode` is not installed (`sudo apt install qrencode`, or `pkg install qrencode`), or you ran `--plain`.
 - **The QR code does not scan.** Make the window tall enough that no row scrolls off, because a code with a cut border does not scan. On a phone, close the keyboard. If the address shows `<device address>`, the device has no network address yet.
