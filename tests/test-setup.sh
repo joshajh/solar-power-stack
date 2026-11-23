@@ -144,12 +144,12 @@ wait_for g "A few sentences about your site"
 press "$LONG"
 wait_for g "word060"; screen g > /tmp/s4.txt   # the end of the text shows: it wraps inside the box
 press Enter
-wait_for g "Done  (5 of 6)";                   screen g > /tmp/s5.txt
+wait_for g "Press Enter to show the QR code"; screen g > /tmp/s5.txt; grep -q "Done  (5 of 6)" /tmp/s5.txt || bad "done screen number"
 grep -q 'Sunny Garden' /tmp/s5.txt || bad "done screen: site name"
 grep -q 'Status:  private' /tmp/s5.txt || bad "done screen: status"
 grep -q 'Press Enter to show the QR code' /tmp/s5.txt || bad "done screen: QR prompt"
 press Enter
-wait_for g "Open your site  (6 of 6)";         sleep 1; screen g > /tmp/s6.txt
+wait_for g "Open your site  (6 of 6)"; wait_for g "solarpower.possibleworlds.space"; screen g > /tmp/s6.txt
 grep -q 'word060' /srv/site/index.html || bad "the paragraph did not reach the page"
 grep -qx 'site_name=Sunny Garden' /etc/solar/solar.conf || bad "gum run: site_name"
 ok "gum run at 40x24: six screens numbered 1 to 6, the long paragraph wraps, the answers apply"
@@ -204,8 +204,8 @@ wait_for g "Pick one";                         screen g | grep -q 'Android setti
 wait_for g "Did you do this?";                 press y
 wait_for g "[x] Battery: Unrestricted";        screen g | grep -q 'Android settings  (5 of 7)' || bad "termux: redrawn screen was counted twice"
 press Down Down Down Down Enter
-wait_for g "Done  (6 of 7)";                   press Enter
-wait_for g "Open your site  (7 of 7)";         sleep 1
+wait_for g "Press Enter to show the QR code"; screen g | grep -q "Done  (6 of 7)" || bad "termux: done number"; press Enter
+wait_for g "Open your site  (7 of 7)"; wait_for g "solarpower.possibleworlds.space"
 screen g | grep -q 'http://192.168.1.50:8080' || bad "termux: address on the QR screen"
 grep -qx 'site_name=Phone Site' /etc/solar/solar.conf || bad "termux: site_name"
 grep -q 'hostname=' /etc/solar/solar.conf && bad "termux: asked for a hostname"
