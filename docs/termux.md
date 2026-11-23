@@ -28,7 +28,7 @@ The command downloads the newest installer from the `main` branch without a chec
 
 The script does this:
 
-1. Updates the package list and installs Caddy and the Termux:API command-line tools with `pkg` (log: `~/solar-pkg.log`). It also tries to install `gum` and `qrencode` for the guided setup. If that fails, the install carries on and the setup asks plain questions.
+1. Updates the package list and installs Caddy and the Termux:API command-line tools with `pkg` (log: `~/solar-pkg.log`). It also tries to install `gum` and `libqrencode` (the Termux package that holds the `qrencode` command) for the guided setup. If that fails, the install carries on and the setup asks plain questions.
 2. Copies the starter site to `~/site` and never overwrites a page you edited.
 3. Writes the Caddyfile (`$PREFIX/etc/caddy/Caddyfile`) for port 8080.
 4. Writes `solar-serve` (`$PREFIX/bin/solar-serve`). It keeps the phone awake with `termux-wake-lock`, starts Caddy, restarts Caddy when it stops, and refreshes the status page every minute.
@@ -91,7 +91,7 @@ The install has run on one Android phone (2026-11-23). The installer logic also 
 | Tested phone model and Android version | One Android phone tested on 2026-11-23. Model and Android version not recorded yet. |
 | One pasted command on a fresh Termux gives a server reachable from another device | Passed on one phone, after updating Termux with `apt update && apt full-upgrade -y` (see Troubleshooting). The starter page opened from another device on the same Wi-Fi. |
 | The printed Wi-Fi address is right | Passed on one phone. The script read it from `termux-wifi-connectioninfo` or from `curl`, because Android 11 and newer block `ip` and `ifconfig`. |
-| `pkg install gum qrencode` works, and the guided setup runs on Termux | Not run. The setup runs in a Debian container that pretends to be Termux (`tests/test-setup.sh`). |
+| `pkg install gum libqrencode` works, and the guided setup runs on Termux | Not run. The setup runs in a Debian container that pretends to be Termux (`tests/test-setup.sh`). |
 | Server survives a phone reboot (Termux:Boot) | Not run |
 | Server survives 24 hours with the screen off | Not run |
 | `am start -a android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS` opens the settings list | Not run |

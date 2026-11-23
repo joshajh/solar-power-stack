@@ -344,8 +344,12 @@ install_setup() {
     && cp -r "$REPO_DIR/install" "$REPO_DIR/setup" "$REPO_DIR/site-template" "$REPO_DIR/status" "$lib"/; } \
     || { say "Could not install solar-setup. The server itself is installed."; return 0; }
   if [ "$OS" = termux ]; then
-    pkg install -y gum qrencode >>"$HOME/solar-pkg.log" 2>&1 \
-      || say "Could not install gum or qrencode. solar-setup still works: it asks plain questions and skips the QR code."
+    # Install them one at a time, so that one failing does not stop the other.
+    pkg install -y gum >>"$HOME/solar-pkg.log" 2>&1 \
+      || say "Could not install gum. solar-setup asks plain questions."
+    # Termux has no package called qrencode: the qrencode command is in libqrencode.
+    pkg install -y libqrencode >>"$HOME/solar-pkg.log" 2>&1 \
+      || say "Could not install libqrencode. solar-setup shows no QR code."
   else
     # A box that already ran Caddy may have an old package list, so refresh it.
     { apt-get update -qq && apt-get install -y -qq qrencode; } >/dev/null 2>&1 \

@@ -57,7 +57,7 @@ Run `solar-setup` again. The name, hostname and status page start from your curr
 ## Tools it uses
 
 - `gum` draws the screens ([charmbracelet/gum](https://github.com/charmbracelet/gum), MIT). On Termux the installer installs it with `pkg`. On Debian and the Pi, `setup/install-gum.sh` downloads release v2.0.2 for amd64 or arm64, checks its SHA-256 against the value in the script, and only then installs it to `/usr/local/lib/solar/bin/gum`. `solar-setup` prefers that copy over one on `PATH`. A download with a different checksum is deleted and never run, and the setup asks plain questions instead.
-- `qrencode` draws the QR code. The installer installs it with `apt` or `pkg`.
+- `qrencode` draws the QR code. The installer installs it with `apt` (Debian and the Pi) or, on Termux, with `pkg install libqrencode`: Termux has no package called `qrencode`, and `libqrencode` includes the command.
 
 A failure to install either tool never fails the install.
 
@@ -68,7 +68,7 @@ A failure to install either tool never fails the install.
 | Plain mode with scripted answers, a second run that changes nothing, a 480-character paragraph, HTML escaping, the no-terminal and no-gum fallbacks, the checksum refusal and the installer hand-over (`tests/test-setup.sh`, a Debian 12 container on amd64 and arm64 in CI) | Passed |
 | A gum run in tmux at 40 by 24 and the QR code decoded from the screen text (same test) | Passed |
 | The screenshots on this page: tmux in a Debian 12 container, rendered to PNG, QR codes decoded from the PNG with `zbarimg` | Done. The Termux screenshots are a Debian container that pretends to be Termux, with a stand-in for `am`. |
-| On a real Android phone: `pkg install gum qrencode`, the Android settings shortcuts, the address lookup, the phone keyboard | Not tested |
+| On a real Android phone: `pkg install gum libqrencode`, the Android settings shortcuts, the address lookup, the phone keyboard | Not tested |
 | On a real Raspberry Pi, or in the built image | Not tested |
 
 ## Troubleshooting
@@ -77,6 +77,6 @@ A failure to install either tool never fails the install.
 - **`Cannot find your site at ...`.** Run the installer first. It creates the site folder.
 - **`The installer failed.`** The message shows the last lines of the installer log, in a file named `/tmp/solar-setup.XXXXXX.log`. With the Pi's read-only root on, turn it off first (see [hardening.md](hardening.md)).
 - **`gum is not installed, so solar-setup asks plain questions.`** gum did not install, for example without internet access. Run the installer again, or use the plain questions: they change the same things.
-- **The QR code is missing.** `qrencode` is not installed (`sudo apt install qrencode`, or `pkg install qrencode`), or you ran `--plain`.
+- **The QR code is missing.** `qrencode` is not installed (`sudo apt install qrencode`, or `pkg install libqrencode`), or you ran `--plain`.
 - **The QR code does not scan.** Make the window tall enough that no row scrolls off, because a code with a cut border does not scan. On a phone, close the keyboard. If the address shows `<device address>`, the device has no network address yet.
 - **On Termux, the address looks wrong.** `solar-setup` finds it the way the installer does: `ip`, then `termux-wifi-connectioninfo`, then `curl`. See [termux.md](termux.md).
