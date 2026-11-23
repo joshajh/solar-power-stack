@@ -51,7 +51,7 @@ Press Enter to start the guided setup. If you answer `n`, or you run the install
 
 ![The welcome screen of solar-setup on a phone-sized terminal.](images/setup/termux-welcome.png)
 
-![The Android settings screen of solar-setup: four settings to tick, then Continue.](images/setup/termux-android.png)
+![The Android settings screen of solar-setup: four settings to choose, change and confirm, then Done.](images/setup/termux-android.png)
 
 ![The last screen: a QR code with the address of the site under it.](images/setup/termux-done.png)
 

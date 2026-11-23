@@ -200,8 +200,8 @@ wait_for g "Site name:";                       press C-u "Phone Site" Enter
 wait_for g "Who can open it?";                 screen g | grep -q 'Status page  (3 of 7)' || bad "termux: status screen number"; press Enter
 wait_for g "Title:";                           press Enter
 wait_for g "A few sentences about your site";  press Enter
-wait_for g "Pick one";                         screen g | grep -q 'Android settings  (5 of 7)' || bad "termux: android screen number"; press Enter
-wait_for g "Did you do this?";                 press y
+wait_for g "Choose a setting to change";                         screen g | grep -q 'Android settings  (5 of 7)' || bad "termux: android screen number"; press Enter
+wait_for g "Did you change it?";                 press y
 wait_for g "[x] Battery: Unrestricted";        screen g | grep -q 'Android settings  (5 of 7)' || bad "termux: redrawn screen was counted twice"
 press Down Down Down Down Enter
 wait_for g "Press Enter to show the QR code"; screen g | grep -q "Done  (6 of 7)" || bad "termux: done number"; press Enter
@@ -209,7 +209,7 @@ wait_for g "Open your site  (7 of 7)"; wait_for g "solarpower.possibleworlds.spa
 screen g | grep -q 'http://192.168.1.50:8080' || bad "termux: address on the QR screen"
 grep -qx 'site_name=Phone Site' /etc/solar/solar.conf || bad "termux: site_name"
 grep -q 'hostname=' /etc/solar/solar.conf && bad "termux: asked for a hostname"
-ok "Termux run: seven screens numbered 1 to 7, the Android screen counts once and says Pick one"
+ok "Termux run: seven screens numbered 1 to 7, the Android screen counts once and says Choose a setting to change"
 tmux kill-server 2>/dev/null || true
 
 echo "ALL PASSED"

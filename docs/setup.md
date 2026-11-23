@@ -33,9 +33,9 @@ The paragraph box wraps long text, so nothing runs off a narrow screen. Press En
 
 ### Android settings (Termux)
 
-![The Android settings screen on a phone-sized terminal: four items to pick and Continue.](images/setup/termux-android.png)
+![The Android settings screen on a phone-sized terminal: four settings to choose, then Done.](images/setup/termux-android.png)
 
-Pick an item. `solar-setup` tells you what to change, opens that Android settings screen with `am start`, and asks `Did you do this?`. A ticked item shows `[x]`. Choose Continue when you finish. The server runs without them, but Android may stop it in the background.
+Choose a setting to change. `solar-setup` tells you what to change and opens that Android settings screen with `am start`, when Android has one. Change the setting by hand, come back, and answer `Did you change it?`. `solar-setup` cannot check the setting, so the box ticks (`[x]`) when you say you did it. Choose Done at any time, even with unticked boxes. The server runs without them, but Android may stop it in the background.
 
 ### Done, and the QR code
 

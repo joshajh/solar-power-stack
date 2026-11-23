@@ -425,17 +425,17 @@ screen_android() {
   while :; do
     screen "Android settings" $again
     again=same
-    box "Android stops apps in the background. Change these four settings so it keeps your server running."
+    box "Android stops apps in the background. Change these four settings so it keeps your server running. Choose one, change it, then confirm. The box ticks when you say you did it."
     local items=()
     for i in 0 1 2 3; do
       [ "${ticked[$i]}" = yes ] && items+=("[x] ${labels[$i]}") || items+=("[ ] ${labels[$i]}")
     done
-    ask_choice "Pick one" "${items[@]}" "Continue"
-    [ "$REPLY" != Continue ] || break
+    ask_choice "Choose a setting to change" "${items[@]}" "Done"
+    [ "$REPLY" != Done ] || break
     for i in 0 1 2 3; do case "$REPLY" in *"${labels[$i]}") pick=$i ;; esac; done
     echo; echo "${notes[$pick]}" | fold -s -w "$INNER"
     [ -z "${actions[$pick]}" ] || open_settings "${actions[$pick]}"
-    ask_yes "Did you do this?" && ticked[pick]=yes
+    ask_yes "Did you change it?" && ticked[pick]=yes
   done
   QUIET=no
 }
