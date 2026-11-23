@@ -2,7 +2,7 @@
 
 This test finds out whether an old Android phone keeps a web server running for 72 hours. You need an Android phone, a charger, a Wi-Fi network and a laptop on the same network.
 
-Write down your results as you go. The report in `docs/spike-termux.md` asks for each item.
+Write down your results as you go. The section "After 72 hours" lists what to write up.
 
 ## Before you start
 
@@ -79,4 +79,4 @@ Check twice a day, if you can, how warm the phone feels. If you have a thermomet
 1. Stop the probe with Ctrl-C.
 2. Summarise the log: `./summarise.sh probe-log.csv`.
 3. Copy the log to `spike/data/` in this repository.
-4. Fill in `docs/spike-termux.md`. A verdict of go means 99% uptime or better over the 72 hours with settings you can document.
+4. Write up the results: the phone model and Android version, the settings that were necessary, the uptime from the log, any outages, the battery temperature and the average power draw. Open an issue or a pull request in this repository with it. A verdict of go means 99% uptime or better over the 72 hours with settings you can document.

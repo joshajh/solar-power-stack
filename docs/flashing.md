@@ -1,6 +1,6 @@
 # Flash the Solar Server image
 
-This guide takes you from an empty SD card to a running web server. You need a Raspberry Pi 3, 4, 5 or Zero 2 W (the image has not been tested on every model yet; see `docs/image.md`), a microSD card (8 GB or larger), a card reader and a computer.
+This guide takes you from an empty SD card to a running web server. You need a Raspberry Pi 3, 4 or 5 (no model has been tested yet, and a Pi Zero 2 W is not supported; see [image.md](image.md)), a microSD card (8 GB or larger), a card reader and a computer.
 
 ## Before you start
 
@@ -52,15 +52,3 @@ Releases use `vMAJOR.MINOR.PATCH`, for example `v0.1.0`.
 - Increase MINOR for new features and for changes to `solar.conf` keys that stay compatible.
 - Increase MAJOR when a change needs you to flash again or edit `solar.conf` again.
 - A tag with a dash, such as `v0.1.0-test` or `v0.2.0-rc1`, is a pre-release. GitHub does not count pre-releases as the latest release, so the address above never points to one.
-
-## Maintainer notes
-
-Pushing a version tag runs `.github/workflows/release.yml`. It builds the image, creates the GitHub Release with the image, checksum, `os-list.json` and icon, and uploads the same files to Backblaze B2 when these repository secrets exist: `B2_KEY_ID`, `B2_APPLICATION_KEY`, `B2_BUCKET` and `B2_ENDPOINT` (the S3 endpoint of the bucket, for example `https://s3.us-west-004.backblazeb2.com`). Without them, the workflow prints a warning and skips the upload. The tag must match `vMAJOR.MINOR.PATCH` with an optional `-suffix`.
-
-Status of the checks that need people and hardware (the maintainer fills in):
-
-| Check | Result |
-| --- | --- |
-| `v0.1.0-test` produces a release with `.img.xz`, `.sha256` and `os-list.json` | Not run |
-| Imager started with the custom repository lists the image with name, description and icon | Not run |
-| B2 upload runs with secrets, and the downloaded file matches its checksum | Not run |

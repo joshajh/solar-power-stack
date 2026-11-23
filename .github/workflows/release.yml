@@ -47,7 +47,7 @@ jobs:
             out/*.img.xz out/*.sha256 out/os-list.json out/icon.png
       - name: Mirror to Backblaze B2
         env:
-          # Josh adds these as repository secrets. This step skips when they are missing.
+          # The maintainer adds these as repository secrets. This step skips when they are missing.
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
           B2_BUCKET: ${{ secrets.B2_BUCKET }}
