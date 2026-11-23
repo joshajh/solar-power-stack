@@ -39,6 +39,7 @@ curl -fsS localhost:8080 | grep -q "My Solar Server" || bad "starter page on 808
 ok "one command serves the starter page on port 8080"
 grep -q "pkg install -y libqrencode" /tmp/calls || bad "the installer must install libqrencode with pkg"
 if grep -E "^pkg install.* qrencode( |$)" /tmp/calls; then bad "Termux has no package called qrencode"; fi
+grep -q "pkg install -y ncurses-utils" /tmp/calls || bad "the installer must install ncurses-utils (tput)"
 ok "Termux installs gum and libqrencode, and never asks for a package called qrencode"
 echo "$out" | grep -q 'http://<phone address>:8080' || bad "no address found: the script prints the placeholder"
 ok "with no address available, the script prints the placeholder and where to look"

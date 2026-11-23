@@ -345,6 +345,8 @@ install_setup() {
     || { say "Could not install solar-setup. The server itself is installed."; return 0; }
   if [ "$OS" = termux ]; then
     # Install them one at a time, so that one failing does not stop the other.
+    # solar-setup reads the screen width with tput, which is in ncurses-utils.
+    pkg install -y ncurses-utils >>"$HOME/solar-pkg.log" 2>&1 || true
     pkg install -y gum >>"$HOME/solar-pkg.log" 2>&1 \
       || say "Could not install gum. solar-setup asks plain questions."
     # Termux has no package called qrencode: the qrencode command is in libqrencode.

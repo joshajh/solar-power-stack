@@ -198,7 +198,15 @@ for cols in 30 40 45 46 50 64 80 120; do
   [ "$widest" -ge $((cols < 66 ? cols - 2 : 64)) ] || { cat /tmp/w.txt; bad "the bars at $cols columns are only $widest wide"; }
   tmux kill-server
 done
-ok "the bars and boxes on the welcome screen leave the last two columns empty from 30 to 120 columns"
+# A fresh Termux has no tput. The width then comes from stty, not a guess of 80.
+mkdir -p /tmp/notput; printf '#!/bin/sh\nexit 127\n' > /tmp/notput/tput; chmod +x /tmp/notput/tput
+newsession w 45 "PATH=/tmp/notput:\$PATH solar-setup"
+wait_for w "(1 of 6)"
+screen w > /tmp/w.txt
+widest=$(perl -CSD -Mutf8 -ne 'chomp; next unless /[█╭│╰]/; $m = length if length > $m; END { print $m + 0 }' /tmp/w.txt)
+[ "$widest" -le 43 ] || { cat /tmp/w.txt; bad "without tput, a bar or box at 45 columns is $widest wide"; }
+tmux kill-server
+ok "the bars and boxes leave the last two columns empty from 30 to 120 columns, with or without tput"
 
 # ---- 10. The same run for Termux: no hostname question, plus the Android settings.
 # This is a Debian container that pretends to be Termux (SOLAR_SETUP_DEVICE) and has a stand-in "am".

@@ -81,7 +81,10 @@ fi
 
 # The screen is two columns narrower than the terminal, up to 64 columns. Some
 # terminals (Termux among them) wrap a line that fills the last column or two.
-COLS=$(tput cols 2>/dev/null || echo 80)
+# tput comes from ncurses-utils, which a fresh Termux lacks, so ask stty next.
+COLS=$(tput cols 2>/dev/null) || COLS=
+case "$COLS" in ''|*[!0-9]*) COLS=$(stty size 2>/dev/null </dev/tty | cut -d' ' -f2) ;; esac
+case "$COLS" in ''|*[!0-9]*|0) COLS=${COLUMNS:-80} ;; esac
 W=$((COLS - 2))
 [ "$W" -gt 64 ] && W=64
 [ "$W" -lt 20 ] && W=20
@@ -548,13 +551,15 @@ screen_qr() {
   screen "Open your site"
   local url=$ADDRESS need rows
   need=$(( $(qr_rows "$url") + 5 ))      # rule, title, address, two lines of text, prompt
-  rows=$(tput lines 2>/dev/null || echo 24)
+  rows=$(tput lines 2>/dev/null || stty size 2>/dev/null </dev/tty | cut -d' ' -f1)
+  rows=${rows:-24}
   while [ "$rows" -lt "$need" ]; do
     echo "This window has $rows rows and the QR code needs $need."
     echo "Make the window taller, then press Enter. Type s to skip."
     IFS= read -r REPLY || REPLY=s
     [ "$REPLY" != s ] || { echo "$url"; return; }
-    rows=$(tput lines 2>/dev/null || echo 24)
+    rows=$(tput lines 2>/dev/null || stty size 2>/dev/null </dev/tty | cut -d' ' -f1)
+    rows=${rows:-24}
     screen "Open your site" same
   done
   # ANSIUTF8 sets black on white itself, so the code scans on any terminal theme.
