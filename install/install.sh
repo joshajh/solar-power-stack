@@ -47,6 +47,9 @@ Options:
   --image-build   Prepare a disk image: set everything up and enable the
                   services, but do not start them. The Pi image build uses this.
   --conf FILE     Read settings from FILE. Default: ./solar.conf if it exists.
+  --no-setup      Do not offer solar-setup, the guided setup, at the end.
+  --apply         Apply new settings to a server that is already installed:
+                  skip package installs and hints. solar-setup uses this.
   --help          Show this text.
 
 solar.conf keys (one key=value per line, lines starting with # are comments):
@@ -70,12 +73,16 @@ SITE_DIR_SET=no
 HARDEN=no
 IMAGE_BUILD=no
 READONLY_ROOT=no
+NO_SETUP=no
+APPLY=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --port)     [ $# -ge 2 ] || fail "--port needs a number."; PORT="$2"; PORT_SET=yes; shift 2 ;;
     --site-dir) [ $# -ge 2 ] || fail "--site-dir needs a folder."; SITE_DIR="$2"; SITE_DIR_SET=yes; shift 2 ;;
     --name)     [ $# -ge 2 ] || fail "--name needs text."; SITE_NAME="$2"; FLAG_NAME=1; shift 2 ;;
     --conf)     [ $# -ge 2 ] || fail "--conf needs a file."; CONF_FILE="$2"; shift 2 ;;
+    --no-setup) NO_SETUP=yes; shift ;;
+    --apply)    APPLY=yes; NO_SETUP=yes; shift ;;
     --harden)   HARDEN=yes; shift ;;
     --image-build) IMAGE_BUILD=yes; shift ;;
     --readonly-root) HARDEN=yes; READONLY_ROOT=yes; shift ;;
@@ -166,11 +173,14 @@ termux_setup() {
   curl --version >/dev/null 2>&1 \
     || fail "curl does not run, because Termux is only partly updated. Run: apt update && apt full-upgrade -y, then run this script again."
 
-  say "Installing Caddy..."
-  # termux-api is the command-line half of Termux:API. The Android app is a separate install.
-  # A fresh Termux often has an old package list, so update it first.
-  { pkg update -y && pkg install -y caddy curl termux-api; } >"$HOME/solar-pkg.log" 2>&1 \
-    || fail "pkg could not install Caddy. The log is in $HOME/solar-pkg.log. Run: apt update && apt full-upgrade -y, then run this script again."
+  # --apply changes settings on a server that already runs, so it installs no packages.
+  if [ "$APPLY" = no ]; then
+    say "Installing Caddy..."
+    # termux-api is the command-line half of Termux:API. The Android app is a separate install.
+    # A fresh Termux often has an old package list, so update it first.
+    { pkg update -y && pkg install -y caddy curl termux-api; } >"$HOME/solar-pkg.log" 2>&1 \
+      || fail "pkg could not install Caddy. The log is in $HOME/solar-pkg.log. Run: apt update && apt full-upgrade -y, then run this script again."
+  fi
   # A half-updated Termux has a newer libcurl than OpenSSL, and curl then fails to start.
   # The script needs curl to fetch the starter files, so stop early with the fix.
   curl --version >/dev/null 2>&1 \
@@ -179,6 +189,7 @@ termux_setup() {
   ensure_repo
   install_site
   install_status
+  install_setup
   write_caddyfile "$caddyfile" && changed=yes
 
   # solar-serve starts Caddy and refreshes the status page every minute.
@@ -231,9 +242,7 @@ SERVE
   curl -fsS "http://127.0.0.1:$PORT" >/dev/null 2>&1 \
     || fail "Caddy did not answer on port $PORT. Look at $HOME/solar-caddy.log"
 
-  termux_check_addons
-  termux_battery_help
-  print_address
+  [ "$APPLY" = no ] || { termux_check_addons; termux_battery_help; print_address; }
 }
 
 # Tell the user which Android apps are missing.
@@ -319,6 +328,50 @@ install_site() {
   if [ -n "${SUDO_USER:-}" ]; then chown -R "$SUDO_USER" "$SITE_DIR"; fi
   # Caddy runs as its own user and needs to read the folder.
   chmod -R a+rX "$SITE_DIR"
+}
+
+# Install the guided setup next to the other commands, with the tools it draws
+# its screens with. The tools are optional: without them solar-setup asks plain
+# questions, so a failure here never stops the install.
+install_setup() {
+  [ "$APPLY" = no ] || return 0
+  [ -f "$REPO_DIR/setup/solar-setup" ] || return 0
+  install -m 755 "$REPO_DIR/setup/solar-setup" "$BIN_DIR/solar-setup"
+  # solar-setup calls this installer again to apply your answers. Keep a copy
+  # with the starter files it needs, so that run works offline.
+  local lib; lib="$(dirname "$BIN_DIR")/lib/solar"
+  mkdir -p "$lib"
+  cp -r "$REPO_DIR/install" "$REPO_DIR/setup" "$REPO_DIR/site-template" "$REPO_DIR/status" "$lib"/
+  if [ "$OS" = termux ]; then
+    pkg install -y gum qrencode >>"$HOME/solar-pkg.log" 2>&1 \
+      || say "Could not install gum or qrencode. solar-setup still works: it asks plain questions and skips the QR code."
+  else
+    apt-get install -y -qq qrencode >/dev/null 2>&1 \
+      || say "Could not install qrencode. solar-setup shows no QR code."
+    # gum is not in Debian 12. install-gum.sh downloads a pinned release and checks its SHA-256.
+    bash "$REPO_DIR/setup/install-gum.sh" "$lib/bin" \
+      || say "Could not install gum. solar-setup asks plain questions."
+  fi
+}
+
+# Hand over to solar-setup. Under "curl | bash", stdin is the script, not a
+# terminal, so read the answer from /dev/tty, and only when /dev/tty works.
+offer_setup() {
+  [ "$NO_SETUP" = no ] && [ "$IMAGE_BUILD" = no ] || return 0
+  [ -x "$BIN_DIR/solar-setup" ] || return 0
+  say ""
+  say "Run solar-setup to finish. It asks a few questions and shows your address."
+  if ( : </dev/tty ) 2>/dev/null; then
+    local answer=""
+    printf 'Start it now? [Y/n] '
+    read -r answer </dev/tty || answer=n
+    case "$answer" in
+      n|N|no) return 0 ;;
+    esac
+    # exec skips the EXIT trap, so delete the downloaded files first.
+    [ -z "${FETCHED_DIR:-}" ] || rm -rf "$FETCHED_DIR"
+    exec "$BIN_DIR/solar-setup" </dev/tty
+  fi
 }
 
 # Write the Caddyfile. Return 0 when the file changed, 1 when it stayed the same.
@@ -525,11 +578,13 @@ else
   ensure_repo
   install_site
   install_status
+  install_setup
   changed=no
   if write_caddyfile /etc/caddy/Caddyfile; then changed=yes; fi
   # An image gets its hostname from solar.conf at first boot instead.
   [ "$IMAGE_BUILD" = yes ] || set_hostname
   [ "$HARDEN" = no ] || harden
   start_debian "$changed"
-  [ "$IMAGE_BUILD" = yes ] || print_address
+  [ "$IMAGE_BUILD" = yes ] || [ "$APPLY" = yes ] || print_address
 fi
+offer_setup

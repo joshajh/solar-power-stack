@@ -21,10 +21,21 @@ The goal: you run your own web server on a device you already have, then you add
 | Directory | Contents |
 | --- | --- |
 | `install/` | The installer script. One script serves the Pi image, Termux and Debian. |
+| `setup/` | `solar-setup`, the guided setup, and the script that installs gum. |
 | `site-template/` | The starter site that the installer copies to your device. |
 | `status/` | The status page. |
 | `image/` | The Raspberry Pi OS image build. |
 | `docs/` | Guides: flash the image, run it on a phone with Termux, protect against power loss, and what the image contains. |
+
+## Guided setup
+
+After the install, `solar-setup` asks for a site name, who can open the status page and a first page, then shows the address of your site as text and as a QR code. The installer offers to start it. Run `sudo solar-setup` (Debian, Pi) or `solar-setup` (Termux) to start it later or to change an answer. See [docs/setup.md](docs/setup.md).
+
+![The welcome screen of solar-setup in a 40-column terminal.](docs/images/setup/debian-welcome.png)
+![The first page screen of solar-setup: a title and a paragraph box.](docs/images/setup/debian-page.png)
+![The last screen of solar-setup: a QR code that opens the site, with the address under it.](docs/images/setup/debian-done.png)
+
+The screenshots come from a Debian 12 container, drawn with tmux. They have not been captured on a phone or a Pi.
 
 ## Flash the image
 
@@ -44,7 +55,7 @@ The code in this repository uses the MIT licence. See `LICENSE`.
 
 Early release. What has been tested so far:
 
-- The installer, the status page and the first-boot setup run in Debian containers on amd64 and arm64 in CI.
+- The installer, the guided setup, the status page and the first-boot setup run in Debian containers on amd64 and arm64 in CI.
 - The Raspberry Pi image builds in GitHub Actions. No one has flashed it on a Pi yet.
 - The Termux install has not been tested on a phone yet.
 

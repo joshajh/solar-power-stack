@@ -24,7 +24,7 @@ cp -r "$HERE/stage-solar" ./stage-solar
 
 # Give the stage the files it copies into the image.
 mkdir -p stage-solar/00-solar/files
-cp -r "$REPO/install" "$REPO/site-template" "$REPO/status" stage-solar/00-solar/files/
+cp -r "$REPO/install" "$REPO/setup" "$REPO/site-template" "$REPO/status" stage-solar/00-solar/files/
 cp -r "$HERE/first-boot" stage-solar/00-solar/files/first-boot
 
 # A random password nobody keeps: password login is not part of the design.
