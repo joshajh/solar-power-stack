@@ -39,7 +39,7 @@ Do these once. Android otherwise stops Termux in the background.
 3. On Android 12 or newer, open Settings, Developer options and switch on **Disable child process restrictions** (the name differs between phones). Without it, Android can kill Caddy even with the wake lock and an unrestricted battery setting.
 4. Leave the phone on its charger, with Wi-Fi on. Set "Keep Wi-Fi on during sleep" to Always if your phone has that option.
 
-The spike report (`docs/spike-termux.md`, from the 72-hour test) lists the settings that the test found necessary. Apply any that this list misses.
+Phone testing may add settings to this list. If a setting on your phone matters and is missing here, open an issue.
 
 ## Status page
 
@@ -51,7 +51,7 @@ None of this has run on a phone yet. The installer logic runs in CI against a si
 
 | Check | Result |
 | --- | --- |
-| Tested phone model and Android version | Not tested. **Josh fills in.** |
+| Tested phone model and Android version | Not tested yet. |
 | One pasted command on a fresh Termux gives a server reachable from another device | Not run |
 | Server survives a phone reboot (Termux:Boot) | Not run |
 | Server survives 24 hours with the screen off | Not run |

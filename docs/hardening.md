@@ -39,9 +39,9 @@ sudo reboot
 
 Security updates apply by themselves only while the read-only root is off. With the mode on, plan to switch it off about once a month.
 
-## Test results
+## Test status
 
-These tests need a Raspberry Pi and have not run yet. **Josh fills in the results after the test.**
+These tests need a Raspberry Pi and have not run yet.
 
 | Test | Result |
 | --- | --- |

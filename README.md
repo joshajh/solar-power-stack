@@ -7,7 +7,7 @@ The goal: you run your own web server on a device you already have, then you add
 ## Target devices
 
 - An old Android phone, through Termux. The server listens on port 8080.
-- A Raspberry Pi 3, 4, 5 or Zero 2 W, through a flashable image.
+- A Raspberry Pi 3, 4 or 5, through a flashable image. A Pi Zero 2 W is not tested yet.
 - Any machine that runs Debian 12 or newer, on arm64 or x86.
 
 ## Tiers
@@ -24,7 +24,7 @@ The goal: you run your own web server on a device you already have, then you add
 | `site-template/` | The starter site that the installer copies to your device. |
 | `status/` | The status page. |
 | `image/` | The Raspberry Pi OS image build. |
-| `docs/` | Design notes and spike reports. |
+| `docs/` | Guides: flash the image, run it on a phone with Termux, protect against power loss, and what the image contains. |
 
 ## Flash the image
 
@@ -34,7 +34,7 @@ Open Raspberry Pi Imager, set a custom repository and paste this address:
 https://github.com/joshajh/solar-power-stack/releases/latest/download/os-list.json
 ```
 
-The full steps are in [docs/flashing.md](docs/flashing.md). The address starts to work after the first full release (not a pre-release) exists and the repository is public.
+The full steps are in [docs/flashing.md](docs/flashing.md).
 
 ## Licence
 
@@ -42,4 +42,10 @@ The code in this repository uses the MIT licence. See `LICENSE`.
 
 ## Status
 
-Under construction. The repository contains placeholders and early work. Nothing here has a release yet.
+Early release. What has been tested so far:
+
+- The installer, the status page and the first-boot setup run in Debian containers on amd64 and arm64 in CI.
+- The Raspberry Pi image builds in GitHub Actions. No one has flashed it on a Pi yet.
+- The Termux install has not been tested on a phone yet.
+
+Each guide in `docs/` lists what has and has not been tested.
