@@ -242,7 +242,7 @@ SERVE
   curl -fsS "http://127.0.0.1:$PORT" >/dev/null 2>&1 \
     || fail "Caddy did not answer on port $PORT. Look at $HOME/solar-caddy.log"
 
-  [ "$APPLY" = no ] || { termux_check_addons; termux_battery_help; print_address; }
+  [ "$APPLY" = yes ] || { termux_check_addons; termux_battery_help; print_address; }
 }
 
 # Tell the user which Android apps are missing.

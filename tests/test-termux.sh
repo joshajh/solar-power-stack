@@ -80,6 +80,17 @@ SOLAR_CONF=/none "$PREFIX/bin/solar-status" "$HOME/site"
 grep -q '"percentage": 55' "$HOME/site/status.json" || bad "battery"
 ok "battery fields appear when Termux:API answers"
 
+# --apply (what solar-setup calls) writes the settings and installs no packages.
+: > /tmp/calls
+printf 'site_name=Applied\nstatus_public=true\n' > /tmp/apply.conf
+out=$(bash install/install.sh --apply --conf /tmp/apply.conf 2>&1) || { echo "$out"; bad "--apply failed"; }
+grep -q '^pkg ' /tmp/calls && bad "--apply ran pkg"
+echo "$out" | grep -q 'Do this once' && bad "--apply printed the Android hints"
+grep -qx 'site_name=Applied' "$PREFIX/etc/solar/solar.conf" || bad "--apply did not save solar.conf"
+grep -q 'status_outside' "$PREFIX/etc/caddy/Caddyfile" && bad "--apply kept the private status rule"
+curl -fsS localhost:8080 >/dev/null || bad "server down after --apply"
+ok "--apply saves solar.conf, rewrites the Caddyfile, installs no packages and prints no hints"
+
 # Piped install: no folder next to the script, so it downloads the starter files.
 pkill -f 'caddy run' 2>/dev/null || caddy stop >/dev/null 2>&1 || true
 sleep 1
