@@ -165,7 +165,11 @@ termux_setup() {
   # termux-api is the command-line half of Termux:API. The Android app is a separate install.
   # A fresh Termux often has an old package list, so update it first.
   { pkg update -y && pkg install -y caddy curl termux-api; } >"$HOME/solar-pkg.log" 2>&1 \
-    || fail "pkg could not install Caddy. The log is in $HOME/solar-pkg.log. Run: pkg upgrade, then run this script again."
+    || fail "pkg could not install Caddy. The log is in $HOME/solar-pkg.log. Run: pkg update -y && pkg upgrade -y, then run this script again."
+  # A half-updated Termux has a newer libcurl than OpenSSL, and curl then fails to start.
+  # The script needs curl to fetch the starter files, so stop early with the fix.
+  curl --version >/dev/null 2>&1 \
+    || fail "curl does not run, because Termux is only partly updated. Run: pkg update -y && pkg upgrade -y, then run this script again."
 
   ensure_repo
   install_site

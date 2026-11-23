@@ -10,10 +10,18 @@ Phones cannot take a flashable image, so the phone route is one pasted command i
 
 ## Install
 
-Open Termux and paste:
+Open Termux. First update every Termux package, because a half-updated Termux breaks `curl` (see Troubleshooting below):
 
 ```
-pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/joshajh/solar-power-stack/main/install/install.sh | bash
+pkg update -y && pkg upgrade -y
+```
+
+If Termux asks what to do about a config file, press Enter to accept the default. This can take a few minutes on an old install.
+
+Then paste the install command:
+
+```
+curl -fsSL https://raw.githubusercontent.com/joshajh/solar-power-stack/main/install/install.sh | bash
 ```
 
 The command downloads the newest installer from the `main` branch without a checksum or a pinned version, and it works only after the repository is public. To pin a version, set `SOLAR_SRC_URL` to the tarball of a release tag. This command has not run on a phone.
@@ -44,6 +52,16 @@ Phone testing may add settings to this list. If a setting on your phone matters 
 ## Status page
 
 `http://<phone address>:8080/status` shows uptime, load, free disk space and, with Termux:API installed, battery percentage, charging state and battery temperature. By default only private addresses (your home network) can see it. See `status/README.md`.
+
+## Troubleshooting
+
+**`CANNOT LINK EXECUTABLE "curl": cannot locate symbol "SSL_set_quic_tls_early_data_enabled"`** (or another missing `SSL_` or `OPENSSL_` symbol). Termux is half-updated: `curl` or `libcurl` is newer than OpenSSL. This happens when one package is installed or upgraded on an old Termux without upgrading the rest. Fix it by updating everything:
+
+```
+pkg update -y && pkg upgrade -y
+```
+
+Then run the install command again. If `pkg upgrade` cannot download packages or stops with a mirror error, run `termux-change-repo`, choose a main mirror, and run the command again.
 
 ## Test results
 
