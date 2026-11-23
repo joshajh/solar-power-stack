@@ -487,15 +487,27 @@ set_hostname() {
   fi
 }
 
+# True for a dotted IPv4 address that is not empty, loopback or unspecified.
+usable_address() {
+  [[ "${1:-}" =~ ^[0-9]+(\.[0-9]+){3}$ ]] && [ "$1" != 0.0.0.0 ] && [[ "$1" != 127.* ]]
+}
+
 print_address() {
   local ip name suffix=""
   [ "$PORT" = 80 ] || suffix=":$PORT"
   say ""
   say "Your server is running. Open one of these addresses in a browser:"
   if [ "$OS" = termux ]; then
-    # Termux's hostname command has no -I. Ask the Wi-Fi interface instead.
+    # Termux's hostname command has no -I, and Android 11 and newer stop apps from reading the
+    # Wi-Fi interface with ip or ifconfig. Try three ways, and keep the first real address.
+    local probe="${SOLAR_ADDRESS_PROBE_URL:-https://github.com}"
     ip=$( { ip -4 addr show wlan0 2>/dev/null || ifconfig wlan0 2>/dev/null; } | grep -oE 'inet [0-9.]+' | head -n 1 | cut -d' ' -f2) || true
-    if [ -n "$ip" ]; then say "  http://$ip$suffix"
+    usable_address "$ip" || ip=$(timeout 5 termux-wifi-connectioninfo 2>/dev/null | grep -oE '"ip": *"[0-9.]+"' | grep -oE '[0-9]+(\.[0-9]+){3}' | head -n 1) || true
+    # curl reports the local address of its own connection, which needs no special permission.
+    usable_address "$ip" || ip=$(curl -4 -s -o /dev/null -w '%{local_ip}' --max-time 8 "$probe" 2>/dev/null) || true
+    if usable_address "$ip"; then
+      say "  http://$ip$suffix"
+      say "  (Use this address from a phone or computer on the same Wi-Fi.)"
     else say "  http://<phone address>$suffix  (find the address in Settings, About phone, Status, IP address)"; fi
     return 0
   fi

@@ -32,10 +32,23 @@ printf '#!/bin/sh\nexit 1\n' > "$PREFIX/bin/pm"; chmod +x "$PREFIX/bin/pm"
 export PATH=$PREFIX/bin:$PATH
 : > /tmp/calls
 
+export SOLAR_ADDRESS_PROBE_URL=http://127.0.0.1:9
 cd /work
 out=$(bash install/install.sh 2>&1) || { echo "$out"; bad "installer failed"; }
 curl -fsS localhost:8080 | grep -q "My Solar Server" || bad "starter page on 8080"
 ok "one command serves the starter page on port 8080"
+echo "$out" | grep -q 'http://<phone address>:8080' || bad "no address found: the script prints the placeholder"
+ok "with no address available, the script prints the placeholder and where to look"
+printf '#!/bin/sh\necho "{ \\"ip\\": \\"192.168.1.77\\" }"\n' > "$PREFIX/bin/termux-wifi-connectioninfo"; chmod +x "$PREFIX/bin/termux-wifi-connectioninfo"
+out2=$(bash install/install.sh 2>&1) || { echo "$out2"; bad "installer failed on the second run"; }
+echo "$out2" | grep -q 'http://192.168.1.77:8080' || { echo "$out2"; bad "address from termux-wifi-connectioninfo"; }
+ok "the address comes from termux-wifi-connectioninfo when Termux:API answers"
+rm -f "$PREFIX/bin/termux-wifi-connectioninfo"
+# curl path: probe the container's own non-loopback address; curl reports it as its local address.
+myip=$(hostname -I | awk '{print $1}')
+out3=$(SOLAR_ADDRESS_PROBE_URL="http://$myip:8080" bash install/install.sh 2>&1) || { echo "$out3"; bad "installer failed on the third run"; }
+echo "$out3" | grep -q "http://$myip:8080" || { echo "$out3"; bad "address from curl's local_ip"; }
+ok "the address comes from curl's local address when Termux:API is missing"
 [ -f "$HOME/site/index.html" ] || bad "site folder"
 grep -q ':8080' "$PREFIX/etc/caddy/Caddyfile" || bad "Caddyfile port"
 curl -fsS localhost:8080/status.json | grep -q uptime_seconds || bad "status.json"
