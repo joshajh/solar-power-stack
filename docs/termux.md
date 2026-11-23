@@ -65,19 +65,19 @@ Then check that `curl --version` prints a version, and run the install command a
 
 ## Test results
 
-None of this has run on a phone yet. The installer logic runs in CI against a simulated Termux (`tests/test-termux.sh`: a fake `$PREFIX`, stub Termux commands, real Caddy). The simulation cannot show how Android treats the server.
+The install has run on one Android phone (2026-11-23). The installer logic also runs in CI against a simulated Termux (`tests/test-termux.sh`: a fake `$PREFIX`, stub Termux commands, real Caddy). The simulation cannot show how Android treats the server over time.
 
 | Check | Result |
 | --- | --- |
-| Tested phone model and Android version | Not tested yet. |
-| One pasted command on a fresh Termux gives a server reachable from another device | Not run |
+| Tested phone model and Android version | One Android phone tested on 2026-11-23. Model and Android version not recorded yet. |
+| One pasted command on a fresh Termux gives a server reachable from another device | Passed on one phone, after updating Termux with `apt update && apt full-upgrade -y` (see Troubleshooting). The starter page opened from another device on the same Wi-Fi. |
+| The printed Wi-Fi address is right | Passed on one phone. The script read it from `termux-wifi-connectioninfo` or from `curl`, because Android 11 and newer block `ip` and `ifconfig`. |
 | Server survives a phone reboot (Termux:Boot) | Not run |
 | Server survives 24 hours with the screen off | Not run |
 | `am start -a android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS` opens the settings list | Not run |
-| `pm list packages` reports Termux:Boot (else the script prints a reminder) | Not run |
+| `pm list packages` reports Termux:Boot (else the script prints a reminder) | Not run. Android 11 and newer can hide installed apps from Termux, so the reminder can be wrong. |
 | Termux:Boot starts `solar-serve` (the script sets `PATH` itself and uses Termux's bash for the status script) | Not run |
 | Android 12 or newer kills Caddy without "Disable child process restrictions", and keeps it with the option on | Not run |
-| The printed Wi-Fi address is right (`ip` or `ifconfig` on `wlan0`) | Not run |
 
 ## Behaviour that the script assumes from the Termux documentation
 
