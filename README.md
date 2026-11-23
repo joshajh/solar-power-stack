@@ -57,6 +57,6 @@ Early release. What has been tested so far:
 
 - The installer, the guided setup, the status page and the first-boot setup run in Debian containers on amd64 and arm64 in CI.
 - The Raspberry Pi image builds in GitHub Actions. No one has flashed it on a Pi yet.
-- The Termux install has not been tested on a phone yet.
+- The Termux install has run on one Android phone: it installs, serves the starter page on port 8080, and the page opens from another device on the same Wi-Fi. Restarting the phone and a 24-hour run are not tested yet.
 
 Each guide in `docs/` lists what has and has not been tested.
