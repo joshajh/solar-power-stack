@@ -188,6 +188,18 @@ head -n 3 /tmp/s6.txt | grep -q 'Open your site' || bad "the title scrolled off"
 ok "the QR screen fits in 24 rows with the title in view"
 tmux kill-server
 
+# ---- 9b. Nothing fills the last columns: some terminals (Termux) wrap a line that does.
+for cols in 30 40 45 46 50 64 80 120; do
+  newsession w "$cols" "solar-setup"
+  wait_for w "(1 of 6)"
+  screen w > /tmp/w.txt
+  widest=$(perl -CSD -Mutf8 -ne 'chomp; next unless /[█╭│╰]/; $m = length if length > $m; END { print $m + 0 }' /tmp/w.txt)
+  [ "$widest" -le $((cols - 2)) ] || { cat /tmp/w.txt; bad "a bar or box at $cols columns is $widest wide"; }
+  [ "$widest" -ge $((cols < 66 ? cols - 2 : 64)) ] || { cat /tmp/w.txt; bad "the bars at $cols columns are only $widest wide"; }
+  tmux kill-server
+done
+ok "the bars and boxes on the welcome screen leave the last two columns empty from 30 to 120 columns"
+
 # ---- 10. The same run for Termux: no hostname question, plus the Android settings.
 # This is a Debian container that pretends to be Termux (SOLAR_SETUP_DEVICE) and has a stand-in "am".
 tmux kill-server 2>/dev/null || true

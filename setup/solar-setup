@@ -79,9 +79,12 @@ if [ "$UI" = gum ] && [ -z "${NO_COLOR:-}" ]; then
   esac
 fi
 
-# The screen is as wide as the terminal, up to 64 columns.
+# The screen is two columns narrower than the terminal, up to 64 columns. Some
+# terminals (Termux among them) wrap a line that fills the last column or two.
 COLS=$(tput cols 2>/dev/null || echo 80)
-[ "$COLS" -gt 64 ] && W=64 || W=$COLS
+W=$((COLS - 2))
+[ "$W" -gt 64 ] && W=64
+[ "$W" -lt 20 ] && W=20
 INNER=$((W - 2))                 # a box adds one border column on each side
 
 # The site's sun gradient, as red green blue triplets.
