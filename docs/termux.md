@@ -10,13 +10,13 @@ Phones cannot take a flashable image, so the phone route is one pasted command i
 
 ## Install
 
-Open Termux. First update every Termux package, because a half-updated Termux breaks `curl` (see Troubleshooting below):
+Open Termux. First update every Termux package, because a half-updated Termux breaks `curl` (see Troubleshooting below). Use `apt` for this, not `pkg`: the `pkg` command calls `curl` itself, so it fails when `curl` is already broken.
 
 ```
-pkg update -y && pkg upgrade -y
+apt update && apt full-upgrade -y
 ```
 
-If Termux asks what to do about a config file, press Enter to accept the default. This can take a few minutes on an old install.
+If Termux asks what to do about a config file, press Enter to accept the default. This can take a few minutes on an old install. If it reports that no mirror is selected, or cannot download packages, run `termux-change-repo`, choose a mirror group near you, and run the command again.
 
 Then paste the install command:
 
@@ -55,13 +55,13 @@ Phone testing may add settings to this list. If a setting on your phone matters 
 
 ## Troubleshooting
 
-**`CANNOT LINK EXECUTABLE "curl": cannot locate symbol "SSL_set_quic_tls_early_data_enabled"`** (or another missing `SSL_` or `OPENSSL_` symbol). Termux is half-updated: `curl` or `libcurl` is newer than OpenSSL. This happens when one package is installed or upgraded on an old Termux without upgrading the rest. Fix it by updating everything:
+**`CANNOT LINK EXECUTABLE "curl": cannot locate symbol "SSL_set_quic_tls_early_data_enabled"`** (or another missing `SSL_` or `OPENSSL_` symbol). Termux is half-updated: `curl` or `libcurl` is newer than OpenSSL. This happens when one package is installed or upgraded on an old Termux without upgrading the rest. Fix it by updating everything with `apt`, not `pkg` (`pkg` calls `curl`, so it stops with "Failed to run the 'curl' command" while `curl` is broken; Termux's own message says to run `apt update && apt full-upgrade`):
 
 ```
-pkg update -y && pkg upgrade -y
+apt update && apt full-upgrade -y
 ```
 
-Then run the install command again. If `pkg upgrade` cannot download packages or stops with a mirror error, run `termux-change-repo`, choose a main mirror, and run the command again.
+Then check that `curl --version` prints a version, and run the install command again. If `apt update` cannot download packages or says that no mirror is selected, run `termux-change-repo`, choose a mirror group near you, and run the command again.
 
 ## Test results
 
