@@ -278,7 +278,10 @@ if [ -f "$CADDYFILE" ]; then
 fi
 
 # conf_get KEY: print the value of KEY in solar.conf, or nothing.
-conf_get() { [ -f "$CONF" ] && { grep -E "^$1=" "$CONF" | tail -n 1 | cut -d= -f2- || true; } || true; }
+conf_get() {
+  [ -f "$CONF" ] || return 0
+  grep -E "^$1=" "$CONF" | tail -n 1 | cut -d= -f2- || true
+}
 
 # True for a dotted IPv4 address that is not empty, loopback or unspecified.
 # install.sh has the same test.
