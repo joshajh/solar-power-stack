@@ -47,6 +47,7 @@ Options:
   --image-build   Prepare a disk image: set everything up and enable the
                   services, but do not start them. The Pi image build uses this.
   --conf FILE     Read settings from FILE. Default: ./solar.conf if it exists.
+  --no-setup      Do not offer solar-setup, the guided setup, at the end.
   --help          Show this text.
 
 solar.conf keys (one key=value per line, lines starting with # are comments):
@@ -70,12 +71,14 @@ SITE_DIR_SET=no
 HARDEN=no
 IMAGE_BUILD=no
 READONLY_ROOT=no
+NO_SETUP=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --port)     [ $# -ge 2 ] || fail "--port needs a number."; PORT="$2"; PORT_SET=yes; shift 2 ;;
     --site-dir) [ $# -ge 2 ] || fail "--site-dir needs a folder."; SITE_DIR="$2"; SITE_DIR_SET=yes; shift 2 ;;
     --name)     [ $# -ge 2 ] || fail "--name needs text."; SITE_NAME="$2"; FLAG_NAME=1; shift 2 ;;
     --conf)     [ $# -ge 2 ] || fail "--conf needs a file."; CONF_FILE="$2"; shift 2 ;;
+    --no-setup) NO_SETUP=yes; shift ;;
     --harden)   HARDEN=yes; shift ;;
     --image-build) IMAGE_BUILD=yes; shift ;;
     --readonly-root) HARDEN=yes; READONLY_ROOT=yes; shift ;;
@@ -174,6 +177,7 @@ termux_setup() {
   ensure_repo
   install_site
   install_status
+  install_setup
   write_caddyfile "$caddyfile" && changed=yes
 
   # solar-serve starts Caddy and refreshes the status page every minute.
@@ -314,6 +318,37 @@ install_site() {
   if [ -n "${SUDO_USER:-}" ]; then chown -R "$SUDO_USER" "$SITE_DIR"; fi
   # Caddy runs as its own user and needs to read the folder.
   chmod -R a+rX "$SITE_DIR"
+}
+
+# Install the guided setup next to the other commands.
+install_setup() {
+  [ -f "$REPO_DIR/setup/solar-setup" ] || return 0
+  install -m 755 "$REPO_DIR/setup/solar-setup" "$BIN_DIR/solar-setup"
+  # solar-setup calls this installer again to apply your answers. Keep a copy
+  # with the starter files it needs, so that run works offline.
+  local lib; lib="$(dirname "$BIN_DIR")/lib/solar"
+  mkdir -p "$lib"
+  cp -r "$REPO_DIR/install" "$REPO_DIR/site-template" "$REPO_DIR/status" "$lib"/
+}
+
+# Hand over to solar-setup. Under "curl | bash", stdin is the script, not a
+# terminal, so read the answer from /dev/tty, and only when /dev/tty works.
+offer_setup() {
+  [ "$NO_SETUP" = no ] && [ "$IMAGE_BUILD" = no ] || return 0
+  [ -x "$BIN_DIR/solar-setup" ] || return 0
+  say ""
+  say "Run solar-setup to finish"
+  if ( : </dev/tty ) 2>/dev/null; then
+    local answer=""
+    printf 'Start it now? [Y/n] '
+    read -r answer </dev/tty || answer=n
+    case "$answer" in
+      n|N|no) return 0 ;;
+    esac
+    # exec skips the EXIT trap, so delete the downloaded files first.
+    [ -z "${FETCHED_DIR:-}" ] || rm -rf "$FETCHED_DIR"
+    exec "$BIN_DIR/solar-setup" </dev/tty
+  fi
 }
 
 # Write the Caddyfile. Return 0 when the file changed, 1 when it stayed the same.
@@ -508,6 +543,7 @@ else
   ensure_repo
   install_site
   install_status
+  install_setup
   changed=no
   if write_caddyfile /etc/caddy/Caddyfile; then changed=yes; fi
   # An image gets its hostname from solar.conf at first boot instead.
@@ -516,3 +552,4 @@ else
   start_debian "$changed"
   [ "$IMAGE_BUILD" = yes ] || print_address
 fi
+offer_setup
